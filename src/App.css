@@ -2902,3 +2902,14 @@ select {
     width: 100%;
   }
 }
+
+.compact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.compact-actions .block-btn,
+.compact-actions .approve-btn {
+  white-space: nowrap;
+}

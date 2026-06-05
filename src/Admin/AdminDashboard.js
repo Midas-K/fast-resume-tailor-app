@@ -76,6 +76,13 @@ function AdminDashboard({ user, onLogout }) {
     return true;
   };
 
+  const canDeleteAccount = (accountItem) => {
+    return getBooleanFlag(
+      accountItem?.can_delete_account,
+      accountItem?.canDeleteAccount
+    );
+  };
+
   const readJsonResponse = async (response, urlLabel) => {
     const contentType = response.headers.get("content-type");
 
@@ -407,6 +414,55 @@ function AdminDashboard({ user, onLogout }) {
       }
 
       alert(result.message);
+      await loadAdminData();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  const deleteAccountForever = async (accountItem) => {
+    if (!accountItem?.id) return;
+
+    const confirmed = window.confirm(
+      `This will permanently delete ${
+        accountItem.name || "this account"
+      }, including its profiles and applications. This cannot be undone. Continue?`
+    );
+
+    if (!confirmed) return;
+
+    const finalConfirmed = window.confirm(
+      "Final confirmation: delete this account forever?"
+    );
+
+    if (!finalConfirmed) return;
+
+    try {
+      const url = `${API_URL}/api/auth/users/${accountItem.id}`;
+
+      const response = await fetch(url, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+
+      const result = await readJsonResponse(response, url);
+
+      if (!response.ok) {
+        throw new Error(result.message || "Could not permanently delete account.");
+      }
+
+      alert(result.message || "Account permanently deleted.");
+
+      if (selectedUserForProfiles?.id === accountItem.id) {
+        setSelectedUserForProfiles(null);
+        setSelectedProfileApplications(null);
+        setSelectedApplicationDate(null);
+      }
+
+      if (selectedAdminForUsers?.id === accountItem.id) {
+        setSelectedAdminForUsers(null);
+      }
+
       await loadAdminData();
     } catch (error) {
       alert(error.message);
@@ -748,29 +804,44 @@ function AdminDashboard({ user, onLogout }) {
               <td>{new Date(item.created_at).toLocaleString()}</td>
 
               <td>
-                {item.is_approved ? (
-                  <button
-                    type="button"
-                    className="block-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      updateApproval(item.id, false);
-                    }}
-                  >
-                    Block
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="approve-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      updateApproval(item.id, true);
-                    }}
-                  >
-                    Approve
-                  </button>
-                )}
+                <div className="profile-admin-actions compact-actions">
+                  {item.is_approved ? (
+                    <button
+                      type="button"
+                      className="block-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateApproval(item.id, false);
+                      }}
+                    >
+                      Block
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="approve-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateApproval(item.id, true);
+                      }}
+                    >
+                      Approve
+                    </button>
+                  )}
+
+                  {canDeleteAccount(item) && (
+                    <button
+                      type="button"
+                      className="block-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteAccountForever(item);
+                      }}
+                    >
+                      Delete Forever
+                    </button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}
@@ -962,33 +1033,48 @@ function AdminDashboard({ user, onLogout }) {
                 <td>{new Date(adminItem.created_at).toLocaleString()}</td>
 
                 <td>
-                  {protectedAdmin ? (
-                    <span className="admin-note">Protected</span>
-                  ) : !canManageThisAdmin(adminItem) ? (
-                    <span className="admin-note">No Access</span>
-                  ) : adminItem.is_approved ? (
-                    <button
-                      type="button"
-                      className="block-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateApproval(adminItem.id, false);
-                      }}
-                    >
-                      Block
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="approve-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateApproval(adminItem.id, true);
-                      }}
-                    >
-                      Approve
-                    </button>
-                  )}
+                  <div className="profile-admin-actions compact-actions">
+                    {protectedAdmin ? (
+                      <span className="admin-note">Protected</span>
+                    ) : !canManageThisAdmin(adminItem) ? (
+                      <span className="admin-note">No Access</span>
+                    ) : adminItem.is_approved ? (
+                      <button
+                        type="button"
+                        className="block-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateApproval(adminItem.id, false);
+                        }}
+                      >
+                        Block
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="approve-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateApproval(adminItem.id, true);
+                        }}
+                      >
+                        Approve
+                      </button>
+                    )}
+
+                    {!protectedAdmin && canDeleteAccount(adminItem) && (
+                      <button
+                        type="button"
+                        className="block-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteAccountForever(adminItem);
+                        }}
+                      >
+                        Delete Forever
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             );
