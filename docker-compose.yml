@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: rta_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: rta_user
+      POSTGRES_PASSWORD: rta_password
+      POSTGRES_DB: rta_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - rta_postgres_data:/var/lib/postgresql/data
+
+  server:
+    build: ./server
+    container_name: rta_server
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000
+      CLIENT_URL: http://frt.ai.com
+      DATABASE_URL: postgres://rta_user:rta_password@postgres:5432/rta_db
+      JWT_SECRET: change_this_to_a_long_random_secret_key
+      
+      AI_PROVIDER: deepseek
+      DEEPSEEK_API_KEY: sk-5bb3f11308944d178ec7948b1a0b6ea2
+      DEEPSEEK_MODEL: deepseek-chat    
+    depends_on:
+      - postgres
+
+  proxy:
+    image: nginx:alpine
+    container_name: frt_proxy
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - client
+      - server
+
+  client:
+    build: .
+    container_name: rta_client
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: ""
+    depends_on:
+      - server
+
+volumes:
+  rta_postgres_data:

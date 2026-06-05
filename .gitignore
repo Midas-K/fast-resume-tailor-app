@@ -1,0 +1,41 @@
+# dependencies
+node_modules/
+server/node_modules/
+
+# production builds
+build/
+dist/
+server/dist/
+
+# real env files - never commit secrets
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+server/.env
+server/.env.local
+server/.env.development
+server/.env.production
+server/.env.test
+
+# keep safe example env files
+!.env.example
+!server/.env.example
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Docker/local data
+*.local
