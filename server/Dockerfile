@@ -1,14 +1,15 @@
-FROM node:20-bookworm-slim
+FROM node:20-alpine
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apk add --no-cache \
     libreoffice \
-    libreoffice-writer \
     fontconfig \
-    fonts-dejavu \
-    fonts-liberation \
-    && rm -rf /var/lib/apt/lists/*
+    ttf-dejavu \
+    msttcorefonts-installer || true
+
+RUN update-ms-fonts || true
+RUN fc-cache -f || true
 
 COPY package*.json ./
 
