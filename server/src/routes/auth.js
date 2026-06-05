@@ -16,21 +16,15 @@ const SPECIAL_AUTO_APPROVE_PASSCODE_HASH =
 const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
 
 const isOwnerEmail = (email) => {
-  return (
-    OWNER_EMAIL &&
-    normalizeEmail(email) === normalizeEmail(OWNER_EMAIL)
-  );
+  return OWNER_EMAIL && normalizeEmail(email) === normalizeEmail(OWNER_EMAIL);
 };
 
-const isSpecialAutoApproveEmail = (email) => {
+const isSpecialAdminEmail = (email) => {
   return (
     SPECIAL_AUTO_APPROVE_EMAIL &&
     normalizeEmail(email) === normalizeEmail(SPECIAL_AUTO_APPROVE_EMAIL)
   );
 };
-
-const isSpecialAdminEmail = (email) =>
-  normalizeEmail(email) === normalizeEmail(SPECIAL_AUTO_APPROVE_EMAIL);
 
 const isSpecialPasscodeEmail = (email) => {
   return isOwnerEmail(email) || isSpecialAdminEmail(email);
@@ -40,6 +34,95 @@ const getPasscodeHashForEmail = (email) => {
   if (isOwnerEmail(email)) return OWNER_PASSCODE_HASH;
   if (isSpecialAdminEmail(email)) return SPECIAL_AUTO_APPROVE_PASSCODE_HASH;
   return "";
+};
+
+const canManageAdminAccounts = (email) => {
+  return isOwnerEmail(email) || isSpecialAdminEmail(email);
+};
+
+const canInspectAdminUsers = (email) => {
+  return isOwnerEmail(email) || isSpecialAdminEmail(email);
+};
+
+const canDeleteTargetAccount = ({ requesterEmail, requesterId, targetUser }) => {
+  if (!targetUser) return false;
+
+  const requesterIsOwner = isOwnerEmail(requesterEmail);
+  const requesterCanManageAdmins = canManageAdminAccounts(requesterEmail);
+
+  const targetIsOwner = isOwnerEmail(targetUser.email);
+  const targetIsSpecialAdmin = isSpecialAdminEmail(targetUser.email);
+  const targetIsAdmin = targetUser.account_type === "admin";
+  const targetIsUser = targetUser.account_type === "user";
+  const targetIsSelf = String(requesterId) === String(targetUser.id);
+
+  // Nobody can delete themselves.
+  if (targetIsSelf) return false;
+
+  // Nobody can delete the owner account.
+  if (targetIsOwner) return false;
+
+  // Special admin account is protected from everyone except owner.
+  // Also special admin cannot delete themself because targetIsSelf already blocks it.
+  if (targetIsSpecialAdmin && !requesterIsOwner) return false;
+
+  // Owner or special admin can delete normal admins.
+  if (targetIsAdmin) {
+    return requesterCanManageAdmins;
+  }
+
+  // Normal users.
+  if (targetIsUser) {
+    // Owner/special admin can delete any user.
+    if (requesterCanManageAdmins) return true;
+
+    // Normal admins can delete pending users.
+    if (!targetUser.is_approved) return true;
+
+    // Normal admins can delete users approved by them.
+    return String(targetUser.approved_by_admin_id || "") === String(requesterId);
+  }
+
+  return false;
+};
+
+const attachPermissionFlags = (user, requester = null) => {
+  const requesterEmail = requester?.email || user.email;
+  const requesterId = requester?.id || user.id;
+
+  const userCanManageAdmins = canManageAdminAccounts(user.email);
+  const userCanInspectAdmins = canInspectAdminUsers(user.email);
+  const userIsProtectedAdmin =
+    user.account_type === "admin" &&
+    (isOwnerEmail(user.email) || isSpecialAdminEmail(user.email));
+
+  const canDelete = requester
+    ? canDeleteTargetAccount({
+        requesterEmail,
+        requesterId,
+        targetUser: user,
+      })
+    : false;
+
+  return {
+    ...user,
+
+    accountType: user.account_type,
+    isApproved: user.is_approved,
+    jobBidStyle: user.job_bid_style,
+
+    can_manage_admin_accounts: userCanManageAdmins,
+    canManageAdminAccounts: userCanManageAdmins,
+
+    can_inspect_admin_users: userCanInspectAdmins,
+    canInspectAdminUsers: userCanInspectAdmins,
+
+    is_protected_admin: userIsProtectedAdmin,
+    isProtectedAdmin: userIsProtectedAdmin,
+
+    can_delete_account: canDelete,
+    canDeleteAccount: canDelete,
+  };
 };
 
 const createToken = (user) => {
@@ -195,7 +278,7 @@ router.post("/signup", async (req, res) => {
         : "Signup successful. Please wait for admin approval.",
       requiresPasscode,
       email: requiresPasscode ? cleanEmail : undefined,
-      user: createdUser.rows[0],
+      user: attachPermissionFlags(createdUser.rows[0]),
     });
   } catch (error) {
     console.error("Signup error:", error);
@@ -295,12 +378,7 @@ router.post("/verify-passcode", async (req, res) => {
     return res.json({
       message: "Secure verification successful.",
       token,
-      user: {
-        ...updatedUser,
-        accountType: updatedUser.account_type,
-        isApproved: updatedUser.is_approved,
-        jobBidStyle: updatedUser.job_bid_style,
-      },
+      user: attachPermissionFlags(updatedUser),
     });
   } catch (error) {
     console.error("Verify passcode error:", error);
@@ -382,19 +460,16 @@ router.post("/login", async (req, res) => {
     return res.json({
       message: "Login successful.",
       token,
-      user: {
+      user: attachPermissionFlags({
         id: user.id,
         name: user.name,
         email: user.email,
         account_type: user.account_type,
-        accountType: user.account_type,
         is_approved: user.is_approved,
-        isApproved: user.is_approved,
         approved_by_admin_id: user.approved_by_admin_id,
         job_bid_style: user.job_bid_style,
-        jobBidStyle: user.job_bid_style,
         created_at: user.created_at,
-      },
+      }),
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -433,12 +508,7 @@ router.get("/me", requireAuth, async (req, res) => {
     const foundUser = userResult.rows[0];
 
     return res.json({
-      user: {
-        ...foundUser,
-        accountType: foundUser.account_type,
-        isApproved: foundUser.is_approved,
-        jobBidStyle: foundUser.job_bid_style,
-      },
+      user: attachPermissionFlags(foundUser),
     });
   } catch (error) {
     console.error("Me error:", error);
@@ -451,11 +521,11 @@ router.get("/me", requireAuth, async (req, res) => {
 
 router.get("/users", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const requesterIsOwner = isOwnerEmail(req.user.email);
+    const requesterCanInspectAdmins = canInspectAdminUsers(req.user.email);
 
     let usersResult;
 
-    if (requesterIsOwner) {
+    if (requesterCanInspectAdmins) {
       usersResult = await pool.query(
         `
           SELECT
@@ -506,7 +576,12 @@ router.get("/users", requireAuth, requireAdmin, async (req, res) => {
     }
 
     return res.json({
-      users: usersResult.rows,
+      users: usersResult.rows.map((row) =>
+        attachPermissionFlags(row, {
+          id: req.user.id,
+          email: req.user.email,
+        })
+      ),
     });
   } catch (error) {
     console.error("Users error:", error);
@@ -580,7 +655,7 @@ router.patch(
         });
       }
 
-      if (targetIsUser && !requesterIsOwner) {
+      if (targetIsUser && !requesterIsOwner && !requesterIsSpecialAdmin) {
         const alreadyApprovedBySomeone =
           targetUser.is_approved && targetUser.approved_by_admin_id;
 
@@ -626,7 +701,10 @@ router.patch(
         message: Boolean(isApproved)
           ? "Account approved successfully."
           : "Account blocked successfully.",
-        user: updatedUser.rows[0],
+        user: attachPermissionFlags(updatedUser.rows[0], {
+          id: req.user.id,
+          email: req.user.email,
+        }),
       });
     } catch (error) {
       console.error("Approval error:", error);
@@ -637,6 +715,123 @@ router.patch(
     }
   }
 );
+
+router.delete("/users/:userId", requireAuth, requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const { userId } = req.params;
+
+    const targetUserResult = await client.query(
+      `
+        SELECT
+          id,
+          name,
+          email,
+          account_type,
+          is_approved,
+          approved_by_admin_id
+        FROM users
+        WHERE id = $1
+      `,
+      [userId]
+    );
+
+    if (targetUserResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "User not found.",
+      });
+    }
+
+    const targetUser = targetUserResult.rows[0];
+
+    const allowedToDelete = canDeleteTargetAccount({
+      requesterEmail: req.user.email,
+      requesterId: req.user.id,
+      targetUser,
+    });
+
+    if (!allowedToDelete) {
+      return res.status(403).json({
+        message:
+          "You do not have permission to permanently delete this account.",
+      });
+    }
+
+    await client.query("BEGIN");
+
+    await client.query(
+      `
+        DELETE FROM applications
+        WHERE profile_id IN (
+          SELECT id
+          FROM profiles
+          WHERE user_id = $1
+        )
+      `,
+      [userId]
+    );
+
+    await client.query(
+      `
+        DELETE FROM profiles
+        WHERE user_id = $1
+      `,
+      [userId]
+    );
+
+    await client.query(
+      `
+        UPDATE users
+        SET approved_by_admin_id = NULL
+        WHERE approved_by_admin_id = $1
+      `,
+      [userId]
+    );
+
+    try {
+      await client.query(
+        `
+          UPDATE resume_templates
+          SET uploaded_by_admin_id = NULL
+          WHERE uploaded_by_admin_id = $1
+        `,
+        [userId]
+      );
+    } catch (cleanupError) {
+      console.error(
+        "Resume template uploader cleanup warning:",
+        cleanupError.message
+      );
+    }
+
+    const deletedUser = await client.query(
+      `
+        DELETE FROM users
+        WHERE id = $1
+        RETURNING id, name, email, account_type
+      `,
+      [userId]
+    );
+
+    await client.query("COMMIT");
+
+    return res.json({
+      message: "Account permanently deleted.",
+      user: deletedUser.rows[0],
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+
+    console.error("Delete user error:", error);
+
+    return res.status(500).json({
+      message: "Could not permanently delete account.",
+    });
+  } finally {
+    client.release();
+  }
+});
 
 router.patch(
   "/users/:userId/job-bid-style",
@@ -677,7 +872,10 @@ router.patch(
 
       const targetUser = targetUserResult.rows[0];
       const requesterIsOwner = isOwnerEmail(req.user.email);
+      const requesterIsSpecialAdmin = isSpecialAdminEmail(req.user.email);
+      const requesterCanManageAdmins = canManageAdminAccounts(req.user.email);
       const targetIsUser = targetUser.account_type === "user";
+      const targetIsAdmin = targetUser.account_type === "admin";
 
       if (!targetUser.is_approved) {
         return res.status(403).json({
@@ -685,9 +883,16 @@ router.patch(
         });
       }
 
+      if (targetIsAdmin && !requesterCanManageAdmins) {
+        return res.status(403).json({
+          message: "Only owner or special admin can update admins.",
+        });
+      }
+
       if (
         targetIsUser &&
         !requesterIsOwner &&
+        !requesterIsSpecialAdmin &&
         String(targetUser.approved_by_admin_id) !== String(req.user.id)
       ) {
         return res.status(403).json({
@@ -715,7 +920,10 @@ router.patch(
 
       return res.json({
         message: "Job-bid style updated.",
-        user: updatedUser.rows[0],
+        user: attachPermissionFlags(updatedUser.rows[0], {
+          id: req.user.id,
+          email: req.user.email,
+        }),
       });
     } catch (error) {
       console.error("Job-bid style error:", error);
