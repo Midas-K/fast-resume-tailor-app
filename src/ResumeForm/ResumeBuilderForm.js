@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { saveResumeToCustomerFolder } from "../services/fileSystemSaveService";
+import {
+  canUseFolderPicker,
+  pickCustomerRootFolder,
+  saveResumeToCustomerFolder,
+} from "../services/fileSystemSaveService";
 
 const API_URL = process.env.REACT_APP_API_URL || "";
 
@@ -96,25 +100,16 @@ function ResumeBuilderForm({ appliedRole, appliedCompany, selectedProfile }) {
     return result;
   };
 
-  const savePdfBlobToCustomerFolder = async (blob) => {
-    const arrayBuffer = await blob.arrayBuffer();
-    const pdfBytes = new Uint8Array(arrayBuffer);
-
-    return saveResumeToCustomerFolder({
-      pdfBytes,
-      profileName: selectedProfile?.name || "Profile",
-      companyName: appliedCompany?.trim() || "Unknown Company",
-      roleName: appliedRole?.trim() || "Unknown Role",
-    });
-  };
-
   const validateRequiredFields = () => {
     if (!selectedProfile) {
       alert("Please select a job-bid profile first.");
       return false;
     }
 
-    if (!String(appliedRole || "").trim() || !String(appliedCompany || "").trim()) {
+    if (
+      !String(appliedRole || "").trim() ||
+      !String(appliedCompany || "").trim()
+    ) {
       alert("Please enter role name and company name first.");
       return false;
     }
@@ -165,8 +160,20 @@ function ResumeBuilderForm({ appliedRole, appliedCompany, selectedProfile }) {
       return;
     }
 
+    let rootDirectoryHandle = null;
+
     try {
       setLoading(true);
+
+      /*
+        IMPORTANT:
+        Folder picker must open immediately from the user's button click.
+        If we wait until after fetch/blob, Chrome blocks it with:
+        "Must be handling a user gesture to show a file picker."
+      */
+      if (canUseFolderPicker()) {
+        rootDirectoryHandle = await pickCustomerRootFolder();
+      }
 
       const response = await fetch(`${API_URL}/api/build-resume/from-template`, {
         method: "POST",
@@ -198,8 +205,16 @@ function ResumeBuilderForm({ appliedRole, appliedCompany, selectedProfile }) {
       }
 
       const blob = await response.blob();
+      const arrayBuffer = await blob.arrayBuffer();
+      const pdfBytes = new Uint8Array(arrayBuffer);
 
-      const saveResult = await savePdfBlobToCustomerFolder(blob);
+      const saveResult = await saveResumeToCustomerFolder({
+        pdfBytes,
+        profileName: selectedProfile?.name || "Profile",
+        companyName: appliedCompany?.trim() || "Unknown Company",
+        roleName: appliedRole?.trim() || "Unknown Role",
+        rootDirectoryHandle,
+      });
 
       await saveApplicationAfterResumeSaved();
 
@@ -211,6 +226,13 @@ function ResumeBuilderForm({ appliedRole, appliedCompany, selectedProfile }) {
         }/${saveResult.fileName}`
       );
     } catch (error) {
+      if (
+        error?.name === "AbortError" ||
+        String(error?.message || "").toLowerCase().includes("aborted")
+      ) {
+        return;
+      }
+
       alert(error.message || "Could not generate resume PDF.");
     } finally {
       setLoading(false);

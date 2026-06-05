@@ -75,11 +75,26 @@ const downloadBlobFallback = ({ pdfBytes, fileName }) => {
   URL.revokeObjectURL(url);
 };
 
+export const canUseFolderPicker = () => {
+  return Boolean(window.showDirectoryPicker && window.isSecureContext);
+};
+
+export const pickCustomerRootFolder = async () => {
+  if (!canUseFolderPicker()) {
+    return null;
+  }
+
+  return window.showDirectoryPicker({
+    mode: "readwrite",
+  });
+};
+
 export const saveResumeToCustomerFolder = async ({
   pdfBytes,
   profileName = "First_Last",
   companyName = "Unknown Company",
   roleName = "Unknown Role",
+  rootDirectoryHandle = null,
 }) => {
   const dateFolder = getTodayFolderName();
 
@@ -90,7 +105,7 @@ export const saveResumeToCustomerFolder = async ({
 
   const fileName = `${sanitizeFileName(profileName, "First_Last")}.pdf`;
 
-  if (!window.showDirectoryPicker || !window.isSecureContext) {
+  if (!rootDirectoryHandle) {
     downloadBlobFallback({
       pdfBytes,
       fileName,
@@ -104,13 +119,12 @@ export const saveResumeToCustomerFolder = async ({
     };
   }
 
-  const rootHandle = await window.showDirectoryPicker({
-    mode: "readwrite",
-  });
-
-  const dateDirectoryHandle = await rootHandle.getDirectoryHandle(dateFolder, {
-    create: true,
-  });
+  const dateDirectoryHandle = await rootDirectoryHandle.getDirectoryHandle(
+    dateFolder,
+    {
+      create: true,
+    }
+  );
 
   const companyRoleDirectoryHandle =
     await dateDirectoryHandle.getDirectoryHandle(companyRoleFolder, {
