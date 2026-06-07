@@ -252,89 +252,14 @@ const getTemplateValidationReport = ({ templateText = "", paragraphs = [] }) => 
     errors.push("{{@DETAILS}} is missing inside the experience loop.");
   }
 
-  if (has("{{@DETAILS}}")) {
-    const badDetailsParagraph = paragraphList.find(
-      (paragraph) =>
-        paragraph.includes("{{@DETAILS}}") &&
-        paragraph.trim() !== "{{@DETAILS}}"
-    );
-
-    if (badDetailsParagraph) {
-      errors.push(
-        "{{@DETAILS}} must be alone in its own paragraph. Do not write text before or after {{@DETAILS}}."
-      );
-    }
-  }
-
-  if (has("{{@SUMMARY}}")) {
-    const badSummaryParagraph = paragraphList.find(
-      (paragraph) =>
-        paragraph.includes("{{@SUMMARY}}") &&
-        paragraph.trim() !== "{{@SUMMARY}}"
-    );
-
-    if (badSummaryParagraph) {
-      errors.push(
-        "{{@SUMMARY}} must be alone in its own paragraph. Do not write text before or after {{@SUMMARY}}."
-      );
-    }
-  }
-
-  if (has("{{@SKILLS}}")) {
-    const badSkillsParagraph = paragraphList.find(
-      (paragraph) =>
-        paragraph.includes("{{@SKILLS}}") &&
-        paragraph.trim() !== "{{@SKILLS}}"
-    );
-
-    if (badSkillsParagraph) {
-      errors.push(
-        "{{@SKILLS}} must be alone in its own paragraph. Do not write text before or after {{@SKILLS}}."
-      );
-    }
-  }
-
-  if (has("{{@CERTIFICATIONS}}")) {
-    const badCertificationsParagraph = paragraphList.find(
-      (paragraph) =>
-        paragraph.includes("{{@CERTIFICATIONS}}") &&
-        paragraph.trim() !== "{{@CERTIFICATIONS}}"
-    );
-
-    if (badCertificationsParagraph) {
-      errors.push(
-        "{{@CERTIFICATIONS}} must be alone in its own paragraph. Do not write text before or after {{@CERTIFICATIONS}}."
-      );
-    }
-  }
-
-  if (has("{{@EDUCATION}}")) {
-    const badEducationParagraph = paragraphList.find(
-      (paragraph) =>
-        paragraph.includes("{{@EDUCATION}}") &&
-        paragraph.trim() !== "{{@EDUCATION}}"
-    );
-
-    if (badEducationParagraph) {
-      errors.push(
-        "{{@EDUCATION}} must be alone in its own paragraph. Do not write text before or after {{@EDUCATION}}."
-      );
-    }
-  }
-
-  if (has("{{@EXPERIENCE}}")) {
-    const badExperienceParagraph = paragraphList.find(
-      (paragraph) =>
-        paragraph.includes("{{@EXPERIENCE}}") &&
-        paragraph.trim() !== "{{@EXPERIENCE}}"
-    );
-
-    if (badExperienceParagraph) {
-      errors.push(
-        "{{@EXPERIENCE}} must be alone in its own paragraph. Do not write text before or after {{@EXPERIENCE}}."
-      );
-    }
-  }
+  [
+    "{{@SUMMARY}}",
+    "{{@EDUCATION}}",
+    "{{@SKILLS}}",
+    "{{@EXPERIENCE}}",
+    "{{@DETAILS}}",
+    "{{@CERTIFICATIONS}}",
+  ].forEach(validateRawPlaceholderIsAlone);
 
   // LOCATION is optional. Missing LOCATION is not an error.
   if (!has("{{LOCATION}}")) {
@@ -394,6 +319,42 @@ const getTemplateValidationReport = ({ templateText = "", paragraphs = [] }) => 
     errors,
     warnings: [...new Set(warnings)],
   };
+};
+
+const has = (placeholder) => text.includes(placeholder);
+
+const normalizeParagraphForPlaceholderCheck = (paragraph) => {
+  return String(paragraph || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\t/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+};
+
+const isRawPlaceholderAlone = (paragraph, placeholder) => {
+  return normalizeParagraphForPlaceholderCheck(paragraph) === placeholder;
+};
+
+const validateRawPlaceholderIsAlone = (placeholder) => {
+  if (!has(placeholder)) return;
+
+  const matchingParagraphs = paragraphList.filter((paragraph) =>
+    paragraph.includes(placeholder)
+  );
+
+  if (matchingParagraphs.length === 0) {
+    return;
+  }
+
+  const hasValidParagraph = matchingParagraphs.some((paragraph) =>
+    isRawPlaceholderAlone(paragraph, placeholder)
+  );
+
+  if (!hasValidParagraph) {
+    errors.push(
+      `${placeholder} must be alone in its own paragraph. Do not write text before or after ${placeholder}.`
+    );
+  }
 };
 
 const getDocxtemplaterErrorMessages = (error) => {
