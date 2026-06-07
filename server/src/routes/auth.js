@@ -40,6 +40,7 @@ const canManageAdminAccounts = (email) => {
 };
 
 const canInspectAdminUsers = (email) => {
+  // Only owner can inspect other admins' users/profiles.
   return isOwnerEmail(email);
 };
 
@@ -59,8 +60,7 @@ const canDeleteTargetAccount = ({ requesterEmail, requesterId, targetUser }) => 
   if (targetIsOwner) return false;
   if (targetIsSpecialAdmin) return false;
 
-  // Special admin can approve/block normal admins only.
-  // Special admin cannot permanently delete accounts.
+  // Special admin can approve/block only. No permanent delete.
   if (requesterIsSpecialAdmin) return false;
 
   // Owner can delete normal admins and users.
@@ -518,6 +518,7 @@ router.get("/users", requireAuth, requireAdmin, async (req, res) => {
     let usersResult;
 
     if (requesterIsOwner) {
+      // Owner sees all admins and all users.
       usersResult = await pool.query(
         `
           SELECT
@@ -537,26 +538,10 @@ router.get("/users", requireAuth, requireAdmin, async (req, res) => {
         `
       );
     } else if (requesterIsSpecialAdmin) {
-      usersResult = await pool.query(
-        `
-          SELECT
-            u.id,
-            u.name,
-            u.email,
-            u.account_type,
-            u.is_approved,
-            u.approved_by_admin_id,
-            a.name AS approved_by_admin_name,
-            a.email AS approved_by_admin_email,
-            u.job_bid_style,
-            u.created_at
-          FROM users u
-          LEFT JOIN users a ON u.approved_by_admin_id = a.id
-          WHERE u.account_type = 'admin'
-          ORDER BY u.created_at DESC
-        `
-      );
-    } else {
+      // Special admin sees:
+      // - all admins
+      // - pending users
+      // - users approved by special admin
       usersResult = await pool.query(
         `
           SELECT
@@ -580,6 +565,36 @@ router.get("/users", requireAuth, requireAdmin, async (req, res) => {
                 u.is_approved = false
                 OR u.approved_by_admin_id = $1
               )
+            )
+          ORDER BY u.created_at DESC
+        `,
+        [req.user.id]
+      );
+    } else {
+      // Normal admin sees:
+      // - pending users
+      // - users approved by this admin
+      // Normal admin cannot see admins.
+      usersResult = await pool.query(
+        `
+          SELECT
+            u.id,
+            u.name,
+            u.email,
+            u.account_type,
+            u.is_approved,
+            u.approved_by_admin_id,
+            a.name AS approved_by_admin_name,
+            a.email AS approved_by_admin_email,
+            u.job_bid_style,
+            u.created_at
+          FROM users u
+          LEFT JOIN users a ON u.approved_by_admin_id = a.id
+          WHERE
+            u.account_type = 'user'
+            AND (
+              u.is_approved = false
+              OR u.approved_by_admin_id = $1
             )
           ORDER BY u.created_at DESC
         `,
@@ -643,12 +658,6 @@ router.patch(
       const targetIsAdmin = targetUser.account_type === "admin";
       const targetIsUser = targetUser.account_type === "user";
 
-      if (requesterIsSpecialAdmin && targetIsUser) {
-        return res.status(403).json({
-          message: "Special admin can only approve or block admin accounts.",
-        });
-      }
-
       if (targetIsOwner && !requesterIsOwner) {
         return res.status(403).json({
           message: "Only owner can update owner account.",
@@ -673,7 +682,7 @@ router.patch(
         });
       }
 
-      if (targetIsUser && !requesterIsOwner && !requesterIsSpecialAdmin) {
+      if (targetIsUser && !requesterIsOwner) {
         const alreadyApprovedBySomeone =
           targetUser.is_approved && targetUser.approved_by_admin_id;
 
@@ -682,9 +691,8 @@ router.patch(
           String(targetUser.approved_by_admin_id) !== String(req.user.id);
 
         if (approvedByAnotherAdmin) {
-          return res.status(409).json({
-            message:
-              "This user is already managed by another admin. Refresh data to see the latest status.",
+          return res.status(403).json({
+            message: "You can only manage pending users or users approved by you.",
           });
         }
       }
@@ -897,27 +905,21 @@ router.patch(
         });
       }
 
-      if (requesterIsSpecialAdmin && targetIsUser) {
-        return res.status(403).json({
-          message: "Special admin cannot update user job-bid style.",
-        });
-      }
-
       if (targetIsAdmin && !requesterIsOwner && !requesterIsSpecialAdmin) {
         return res.status(403).json({
           message: "Only owner or special admin can update admins.",
         });
       }
 
-      if (
-        targetIsUser &&
-        !requesterIsOwner &&
-        !requesterIsSpecialAdmin &&
-        String(targetUser.approved_by_admin_id) !== String(req.user.id)
-      ) {
-        return res.status(403).json({
-          message: "You can only update users approved by you.",
-        });
+      if (targetIsUser && !requesterIsOwner) {
+        const approvedByThisAdmin =
+          String(targetUser.approved_by_admin_id || "") === String(req.user.id);
+
+        if (!approvedByThisAdmin) {
+          return res.status(403).json({
+            message: "You can only update users approved by you.",
+          });
+        }
       }
 
       const updatedUser = await pool.query(
