@@ -867,7 +867,6 @@ const runLibreOfficeConvertForPreview = async (inputPath, outputDir) => {
           "--nofirststartwizard",
           "--nolockcheck",
           "--nodefault",
-          `--env:UserInstallation=${userInstallationUrl}`,
           "--convert-to",
           "pdf",
           "--outdir",
@@ -879,6 +878,7 @@ const runLibreOfficeConvertForPreview = async (inputPath, outputDir) => {
           env: {
             ...process.env,
             HOME: libreOfficeProfileDir,
+            UserInstallation: userInstallationUrl,
           },
         },
         (error, stdout, stderr) => {
