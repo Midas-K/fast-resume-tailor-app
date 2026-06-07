@@ -9,7 +9,6 @@ const OWNER_EMAIL = process.env.OWNER_EMAIL;
 const OWNER_PASSCODE_HASH = process.env.OWNER_PASSCODE_HASH || "";
 
 const SPECIAL_AUTO_APPROVE_EMAIL = process.env.SPECIAL_AUTO_APPROVE_EMAIL;
-
 const SPECIAL_AUTO_APPROVE_PASSCODE_HASH =
   process.env.SPECIAL_AUTO_APPROVE_PASSCODE_HASH || "";
 
@@ -41,14 +40,15 @@ const canManageAdminAccounts = (email) => {
 };
 
 const canInspectAdminUsers = (email) => {
-  return isOwnerEmail(email) || isSpecialAdminEmail(email);
+  // Owner only can inspect other admins' users.
+  return isOwnerEmail(email);
 };
 
 const canDeleteTargetAccount = ({ requesterEmail, requesterId, targetUser }) => {
   if (!targetUser) return false;
 
   const requesterIsOwner = isOwnerEmail(requesterEmail);
-  const requesterCanManageAdmins = canManageAdminAccounts(requesterEmail);
+  const requesterIsSpecialAdmin = isSpecialAdminEmail(requesterEmail);
 
   const targetIsOwner = isOwnerEmail(targetUser.email);
   const targetIsSpecialAdmin = isSpecialAdminEmail(targetUser.email);
@@ -56,30 +56,24 @@ const canDeleteTargetAccount = ({ requesterEmail, requesterId, targetUser }) => 
   const targetIsUser = targetUser.account_type === "user";
   const targetIsSelf = String(requesterId) === String(targetUser.id);
 
-  // Nobody can delete themselves.
   if (targetIsSelf) return false;
-
-  // Nobody can delete the owner account.
   if (targetIsOwner) return false;
+  if (targetIsSpecialAdmin) return false;
 
-  // Special admin account is protected from everyone except owner.
-  // Also special admin cannot delete themself because targetIsSelf already blocks it.
-  if (targetIsSpecialAdmin && !requesterIsOwner) return false;
+  // Special admin can approve/block admins only. No permanent delete.
+  if (requesterIsSpecialAdmin) return false;
 
-  // Owner or special admin can delete normal admins.
-  if (targetIsAdmin) {
-    return requesterCanManageAdmins;
+  // Owner can delete normal admins and users.
+  if (requesterIsOwner) {
+    return targetIsAdmin || targetIsUser;
   }
 
-  // Normal users.
+  // Normal admins cannot delete admins.
+  if (targetIsAdmin) return false;
+
+  // Normal admins can delete pending users or users they approved.
   if (targetIsUser) {
-    // Owner/special admin can delete any user.
-    if (requesterCanManageAdmins) return true;
-
-    // Normal admins can delete pending users.
     if (!targetUser.is_approved) return true;
-
-    // Normal admins can delete users approved by them.
     return String(targetUser.approved_by_admin_id || "") === String(requesterId);
   }
 
@@ -92,6 +86,7 @@ const attachPermissionFlags = (user, requester = null) => {
 
   const userCanManageAdmins = canManageAdminAccounts(user.email);
   const userCanInspectAdmins = canInspectAdminUsers(user.email);
+
   const userIsProtectedAdmin =
     user.account_type === "admin" &&
     (isOwnerEmail(user.email) || isSpecialAdminEmail(user.email));
@@ -346,8 +341,6 @@ router.post("/verify-passcode", async (req, res) => {
       });
     }
 
-    const user = userResult.rows[0];
-
     const updatedUserResult = await pool.query(
       `
         UPDATE users
@@ -363,7 +356,7 @@ router.post("/verify-passcode", async (req, res) => {
           job_bid_style,
           created_at
       `,
-      [user.id]
+      [userResult.rows[0].id]
     );
 
     const updatedUser = updatedUserResult.rows[0];
@@ -426,7 +419,6 @@ router.post("/login", async (req, res) => {
     }
 
     const user = userResult.rows[0];
-
     const passwordOk = await bcrypt.compare(password, user.password_hash);
 
     if (!passwordOk) {
@@ -505,10 +497,8 @@ router.get("/me", requireAuth, async (req, res) => {
       });
     }
 
-    const foundUser = userResult.rows[0];
-
     return res.json({
-      user: attachPermissionFlags(foundUser),
+      user: attachPermissionFlags(userResult.rows[0]),
     });
   } catch (error) {
     console.error("Me error:", error);
@@ -521,11 +511,12 @@ router.get("/me", requireAuth, async (req, res) => {
 
 router.get("/users", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const requesterCanInspectAdmins = canInspectAdminUsers(req.user.email);
+    const requesterIsOwner = isOwnerEmail(req.user.email);
+    const requesterIsSpecialAdmin = isSpecialAdminEmail(req.user.email);
 
     let usersResult;
 
-    if (requesterCanInspectAdmins) {
+    if (requesterIsOwner) {
       usersResult = await pool.query(
         `
           SELECT
@@ -541,6 +532,26 @@ router.get("/users", requireAuth, requireAdmin, async (req, res) => {
             u.created_at
           FROM users u
           LEFT JOIN users a ON u.approved_by_admin_id = a.id
+          ORDER BY u.created_at DESC
+        `
+      );
+    } else if (requesterIsSpecialAdmin) {
+      usersResult = await pool.query(
+        `
+          SELECT
+            u.id,
+            u.name,
+            u.email,
+            u.account_type,
+            u.is_approved,
+            u.approved_by_admin_id,
+            a.name AS approved_by_admin_name,
+            a.email AS approved_by_admin_email,
+            u.job_bid_style,
+            u.created_at
+          FROM users u
+          LEFT JOIN users a ON u.approved_by_admin_id = a.id
+          WHERE u.account_type = 'admin'
           ORDER BY u.created_at DESC
         `
       );
@@ -631,6 +642,12 @@ router.patch(
       const targetIsAdmin = targetUser.account_type === "admin";
       const targetIsUser = targetUser.account_type === "user";
 
+      if (requesterIsSpecialAdmin && targetIsUser) {
+        return res.status(403).json({
+          message: "Special admin can only approve or block admin accounts.",
+        });
+      }
+
       if (targetIsOwner && !requesterIsOwner) {
         return res.status(403).json({
           message: "Only owner can update owner account.",
@@ -671,11 +688,7 @@ router.patch(
         }
       }
 
-      let approvedByAdminId = null;
-
-      if (Boolean(isApproved)) {
-        approvedByAdminId = req.user.id;
-      }
+      const approvedByAdminId = Boolean(isApproved) ? req.user.id : null;
 
       const updatedUser = await pool.query(
         `
@@ -871,19 +884,25 @@ router.patch(
       }
 
       const targetUser = targetUserResult.rows[0];
+
       const requesterIsOwner = isOwnerEmail(req.user.email);
       const requesterIsSpecialAdmin = isSpecialAdminEmail(req.user.email);
-      const requesterCanManageAdmins = canManageAdminAccounts(req.user.email);
       const targetIsUser = targetUser.account_type === "user";
       const targetIsAdmin = targetUser.account_type === "admin";
 
       if (!targetUser.is_approved) {
         return res.status(403).json({
-          message: "You can only update approved users.",
+          message: "You can only update approved accounts.",
         });
       }
 
-      if (targetIsAdmin && !requesterCanManageAdmins) {
+      if (requesterIsSpecialAdmin && targetIsUser) {
+        return res.status(403).json({
+          message: "Special admin cannot update user job-bid style.",
+        });
+      }
+
+      if (targetIsAdmin && !requesterIsOwner && !requesterIsSpecialAdmin) {
         return res.status(403).json({
           message: "Only owner or special admin can update admins.",
         });

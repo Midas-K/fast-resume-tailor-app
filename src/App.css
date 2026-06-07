@@ -2913,3 +2913,50 @@ select {
 .compact-actions .approve-btn {
   white-space: nowrap;
 }
+
+.profile-full-details {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.profile-full-details h5 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.profile-detail-list {
+  display: grid;
+  gap: 8px;
+}
+
+.profile-detail-item {
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.profile-detail-item strong {
+  display: block;
+  font-size: 13px;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.profile-detail-item p {
+  margin: 2px 0;
+  font-size: 12px;
+  color: #475569;
+}
+
+.profile-detail-empty {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+}

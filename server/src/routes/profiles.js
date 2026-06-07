@@ -5,13 +5,18 @@ const pool = require("../db");
 const router = express.Router();
 
 const OWNER_EMAIL = process.env.OWNER_EMAIL;
+const SPECIAL_AUTO_APPROVE_EMAIL = process.env.SPECIAL_AUTO_APPROVE_EMAIL;
 
 const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
 
 const isOwnerEmail = (email) => {
+  return OWNER_EMAIL && normalizeEmail(email) === normalizeEmail(OWNER_EMAIL);
+};
+
+const isSpecialAdminEmail = (email) => {
   return (
-    OWNER_EMAIL &&
-    normalizeEmail(email) === normalizeEmail(OWNER_EMAIL)
+    SPECIAL_AUTO_APPROVE_EMAIL &&
+    normalizeEmail(email) === normalizeEmail(SPECIAL_AUTO_APPROVE_EMAIL)
   );
 };
 
@@ -77,6 +82,15 @@ const canAdminManageProfile = async ({ profileId, adminUser }) => {
   }
 
   const profile = profileCheck.rows[0];
+
+  if (isSpecialAdminEmail(adminUser.email)) {
+    return {
+      allowed: false,
+      status: 403,
+      message: "Special admin cannot manage user profiles.",
+      profile,
+    };
+  }
 
   if (
     !isOwnerEmail(adminUser.email) &&
@@ -522,6 +536,10 @@ router.get("/admin/history", requireAuth, requireAdmin, async (req, res) => {
         LIMIT 200
         `
       );
+    } else if (isSpecialAdminEmail(req.user.email)) {
+      result = {
+        rows: [],
+      };
     } else {
       result = await pool.query(
         `
@@ -588,6 +606,10 @@ router.get("/admin/all", requireAuth, requireAdmin, async (req, res) => {
         ORDER BY profiles.created_at DESC
         `
       );
+    } else if (isSpecialAdminEmail(req.user.email)) {
+      result = {
+        rows: [],
+      };
     } else {
       result = await pool.query(
         `
@@ -624,10 +646,10 @@ router.get("/admin/all", requireAuth, requireAdmin, async (req, res) => {
       profiles: result.rows,
     });
   } catch (error) {
-    console.error("All profiles error:", error);
+    console.error("Admin load all profiles error:", error);
 
     res.status(500).json({
-      message: "Could not load profiles.",
+      message: "Could not load admin profiles.",
     });
   }
 });

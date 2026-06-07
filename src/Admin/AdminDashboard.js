@@ -127,6 +127,84 @@ function AdminDashboard({ user, onLogout }) {
     });
   };
 
+  const parseProfileJsonField = (value) => {
+    if (!value) return [];
+
+    if (Array.isArray(value)) {
+      return value;
+    }
+
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  };
+
+  const renderEducationDetails = (profile) => {
+    const educationItems = parseProfileJsonField(profile.education);
+
+    if (educationItems.length === 0) {
+      return <p className="profile-detail-empty">No education added.</p>;
+    }
+
+    return (
+      <div className="profile-detail-list">
+        {educationItems.map((education, index) => (
+          <div className="profile-detail-item" key={index}>
+            <strong>
+              {education.school ||
+                education.university ||
+                education.universityName ||
+                "University"}
+            </strong>
+
+            <p>
+              {[education.degree, education.major]
+                .filter((value) => value && String(value).trim())
+                .join(" - ") || "Degree / Major not provided"}
+            </p>
+
+            <p>
+              {[education.location, education.timeline]
+                .filter((value) => value && String(value).trim())
+                .join(" | ") || "Location / timeline not provided"}
+            </p>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderExperienceDetails = (profile) => {
+    const experienceItems = parseProfileJsonField(profile.experience);
+
+    if (experienceItems.length === 0) {
+      return <p className="profile-detail-empty">No experience added.</p>;
+    }
+
+    return (
+      <div className="profile-detail-list">
+        {experienceItems.map((experience, index) => (
+          <div className="profile-detail-item" key={index}>
+            <strong>
+              {[experience.companyName, experience.title]
+                .filter((value) => value && String(value).trim())
+                .join(" - ") || "Company / Title"}
+            </strong>
+
+            <p>
+              {[experience.location, experience.timeline]
+                .filter((value) => value && String(value).trim())
+                .join(" | ") || "Location / timeline not provided"}
+            </p>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const resetApplicationDashboard = () => {
     setApplicationDashboardMode("users");
     setSelectedAdminForUsers(null);
@@ -448,7 +526,9 @@ function AdminDashboard({ user, onLogout }) {
       const result = await readJsonResponse(response, url);
 
       if (!response.ok) {
-        throw new Error(result.message || "Could not permanently delete account.");
+        throw new Error(
+          result.message || "Could not permanently delete account."
+        );
       }
 
       alert(result.message || "Account permanently deleted.");
@@ -922,6 +1002,18 @@ function AdminDashboard({ user, onLogout }) {
                     <strong>Created:</strong>{" "}
                     {new Date(profile.created_at).toLocaleString()}
                   </p>
+                </div>
+
+                <div className="profile-full-details">
+                  <div>
+                    <h5>Education</h5>
+                    {renderEducationDetails(profile)}
+                  </div>
+
+                  <div>
+                    <h5>Experience</h5>
+                    {renderExperienceDetails(profile)}
+                  </div>
                 </div>
 
                 <div className="profile-admin-actions">
@@ -1470,8 +1562,8 @@ function AdminDashboard({ user, onLogout }) {
                   <div>
                     <h2>Admins</h2>
                     <p>
-                      Admin permissions are controlled by the backend. No owner
-                      or special-admin emails are stored in the frontend.
+                      Owner can inspect admins' users. Special admin can only
+                      approve or block normal admin accounts.
                     </p>
                   </div>
                 </div>
@@ -1509,18 +1601,22 @@ function AdminDashboard({ user, onLogout }) {
                   </div>
                 )}
 
-                <div
-                  className="admin-section-header"
-                  style={{ marginTop: "24px" }}
-                >
-                  <div>
-                    <h2>Users</h2>
-                    <p>Manage approved and pending users.</p>
-                  </div>
-                </div>
+                {normalAdminUsers.length > 0 && (
+                  <>
+                    <div
+                      className="admin-section-header"
+                      style={{ marginTop: "24px" }}
+                    >
+                      <div>
+                        <h2>Users</h2>
+                        <p>Manage approved and pending users.</p>
+                      </div>
+                    </div>
 
-                {renderUserTable(normalAdminUsers)}
-                {renderSelectedUserProfiles()}
+                    {renderUserTable(normalAdminUsers)}
+                    {renderSelectedUserProfiles()}
+                  </>
+                )}
               </>
             ) : (
               <>
@@ -1683,8 +1779,8 @@ function AdminDashboard({ user, onLogout }) {
               <div>
                 <h2>User Profiles</h2>
                 <p>
-                  View, update, or remove each profile prompt and assign a DOCX
-                  resume template.
+                  View full profile details, update prompts, and assign DOCX
+                  resume templates.
                 </p>
               </div>
             </div>
@@ -1698,6 +1794,8 @@ function AdminDashboard({ user, onLogout }) {
                     <th>Profile Location</th>
                     <th>Profile Phone</th>
                     <th>Profile Email</th>
+                    <th>Education Details</th>
+                    <th>Experience Details</th>
                     <th>Prompt</th>
                     <th>Resume Template</th>
                     <th>Whole Application Count</th>
@@ -1713,6 +1811,8 @@ function AdminDashboard({ user, onLogout }) {
                       <td>{profile.location || "-"}</td>
                       <td>{profile.phone || "-"}</td>
                       <td>{profile.profile_email || "-"}</td>
+                      <td>{renderEducationDetails(profile)}</td>
+                      <td>{renderExperienceDetails(profile)}</td>
 
                       <td>
                         <div className="prompt-inline-panel">
@@ -1820,7 +1920,7 @@ function AdminDashboard({ user, onLogout }) {
 
                   {allProfiles.length === 0 && (
                     <tr>
-                      <td colSpan="9">No profiles found.</td>
+                      <td colSpan="11">No profiles found.</td>
                     </tr>
                   )}
                 </tbody>
