@@ -83,14 +83,14 @@ const canAdminManageProfile = async ({ profileId, adminUser }) => {
 
   const profile = profileCheck.rows[0];
 
-  if (isSpecialAdminEmail(adminUser.email)) {
+  /*if (isSpecialAdminEmail(adminUser.email)) {
     return {
       allowed: false,
       status: 403,
       message: "Special admin cannot manage user profiles.",
       profile,
     };
-  }
+  }*/
 
   if (
     !isOwnerEmail(adminUser.email) &&
@@ -537,9 +537,26 @@ router.get("/admin/history", requireAuth, requireAdmin, async (req, res) => {
         `
       );
     } else if (isSpecialAdminEmail(req.user.email)) {
-      result = {
-        rows: [],
-      };
+      result = await pool.query(
+        `
+        SELECT
+          profile_history.id,
+          profile_history.user_id,
+          users.name AS user_name,
+          profile_history.user_email,
+          profile_history.profile_id,
+          profile_history.profile_name,
+          profile_history.event_type,
+          profile_history.created_at
+        FROM profile_history
+        JOIN users ON users.id = profile_history.user_id
+        WHERE users.account_type = 'user'
+        AND users.approved_by_admin_id = $1
+        ORDER BY profile_history.created_at DESC
+        LIMIT 200
+        `,
+        [req.user.id]
+      );
     } else {
       result = await pool.query(
         `
@@ -607,9 +624,35 @@ router.get("/admin/all", requireAuth, requireAdmin, async (req, res) => {
         `
       );
     } else if (isSpecialAdminEmail(req.user.email)) {
-      result = {
-        rows: [],
-      };
+      result = await pool.query(
+        `
+        SELECT
+          profiles.id,
+          profiles.user_id,
+          users.name AS user_name,
+          users.email AS user_email,
+          profiles.name AS profile_name,
+          profiles.location,
+          profiles.phone,
+          profiles.email AS profile_email,
+          profiles.education,
+          profiles.experience,
+          profiles.admin_prompt,
+          profiles.resume_template_id,
+          resume_templates.name AS resume_template_name,
+          resume_templates.file_name AS resume_template_file_name,
+          profiles.created_at
+        FROM profiles
+        JOIN users ON users.id = profiles.user_id
+        LEFT JOIN resume_templates
+          ON resume_templates.id = profiles.resume_template_id
+         AND resume_templates.is_active = true
+        WHERE users.account_type = 'user'
+        AND users.approved_by_admin_id = $1
+        ORDER BY profiles.created_at DESC
+        `,
+        [req.user.id]
+      );
     } else {
       result = await pool.query(
         `
