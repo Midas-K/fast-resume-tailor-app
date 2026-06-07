@@ -96,6 +96,7 @@ function PromptGenerator({
           return `
 I will paste a Job Description (JD).
 
+1. Creating a Resume
 Your task is to create a resume that is fully tailored for this specific role and optimized to achieve the highest possible ATS match score, using ONLY job-relevant information.
 
 ✅ Allowed Job Description Sections (use ONLY these or their equivalents):
@@ -178,6 +179,15 @@ No longer use the "—" em dash anywhere in the resume. Use "-" for ranges like 
 Resume order is Summary, Education, SKills, Experience, and Certifications.
 
 When referencing experience or time, always use numeric values. Example: 12+, 13, 13+ years of experience.
+
+
+2. Job Bidding Questions
+ • I will paste the list of application or interview questions from the employer.
+ • You must generate concise answers:
+ • 1-2 sentences only.
+ • Max 20 words each.
+ • Align directly with the JD and my resume.
+ • Emphasize technical expertise, leadership, accomplishments, and JD alignment.
 
 Job Description:
 '''
