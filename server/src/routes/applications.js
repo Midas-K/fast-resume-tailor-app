@@ -204,9 +204,39 @@ router.get("/admin/summary", requireAuth, requireAdmin, async (req, res) => {
         `
       );
     } else if (isSpecialAdminEmail(req.user.email)) {
-      result = {
-        rows: [],
-      };
+      result = await pool.query(
+        `
+        SELECT
+          applications.normalized_company_name,
+          applications.normalized_role_name,
+          MIN(applications.company_name) AS company_name,
+          MIN(applications.role_name) AS role_name,
+          COUNT(*) AS application_count,
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'userId', users.id,
+              'userName', users.name,
+              'userEmail', users.email,
+              'profileId', profiles.id,
+              'profileName', profiles.name,
+              'profileEmail', profiles.email,
+              'profileLocation', profiles.location,
+              'appliedAt', applications.created_at
+            )
+            ORDER BY applications.created_at DESC
+          ) AS profiles
+        FROM applications
+        JOIN users ON users.id = applications.user_id
+        JOIN profiles ON profiles.id = applications.profile_id
+        WHERE users.account_type = 'user'
+        AND users.approved_by_admin_id = $1
+        GROUP BY
+          applications.normalized_company_name,
+          applications.normalized_role_name
+        ORDER BY application_count DESC, company_name ASC
+        `,
+        [req.user.id]
+      );
     } else {
       result = await pool.query(
         `
