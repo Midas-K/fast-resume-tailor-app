@@ -8,6 +8,7 @@ const os = require("os");
 const { execFile } = require("child_process");
 const PizZip = require("pizzip");
 const Docxtemplater = require("docxtemplater");
+const { pathToFileURL } = require("url");
 
 const router = express.Router();
 
@@ -849,40 +850,100 @@ const makePreviewDocxBuffer = (templateBuffer) => {
   });
 };
 
-const runLibreOfficeConvertForPreview = (inputPath, outputDir) => {
-  return new Promise((resolve, reject) => {
-    execFile(
-      "libreoffice",
-      [
-        "--headless",
-        "--convert-to",
-        "pdf",
-        "--outdir",
-        outputDir,
-        inputPath,
-      ],
-      {
-        timeout: 120000,
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error("LibreOffice preview stdout:", stdout);
-          console.error("LibreOffice preview stderr:", stderr);
-          reject(
-            new Error(
-              stderr ||
-                stdout ||
-                error.message ||
-                "LibreOffice failed to convert DOCX to PDF."
-            )
-          );
-          return;
-        }
+const runLibreOfficeConvertForPreview = async (inputPath, outputDir) => {
+  const libreOfficeProfileDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "frt-libreoffice-profile-")
+  );
 
-        resolve();
-      }
+  const userInstallationUrl = pathToFileURL(libreOfficeProfileDir).href;
+
+  const runCommand = (command) => {
+    return new Promise((resolve, reject) => {
+      execFile(
+        command,
+        [
+          "--headless",
+          "--nologo",
+          "--nofirststartwizard",
+          "--nolockcheck",
+          "--nodefault",
+          `--env:UserInstallation=${userInstallationUrl}`,
+          "--convert-to",
+          "pdf",
+          "--outdir",
+          outputDir,
+          inputPath,
+        ],
+        {
+          timeout: 120000,
+          env: {
+            ...process.env,
+            HOME: libreOfficeProfileDir,
+          },
+        },
+        (error, stdout, stderr) => {
+          if (error) {
+            reject(
+              new Error(
+                [
+                  `LibreOffice command failed: ${command}`,
+                  stdout ? `stdout: ${stdout}` : "",
+                  stderr ? `stderr: ${stderr}` : "",
+                  error.message ? `error: ${error.message}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n")
+              )
+            );
+            return;
+          }
+
+          resolve({
+            stdout,
+            stderr,
+          });
+        }
+      );
+    });
+  };
+
+  try {
+    try {
+      await runCommand("libreoffice");
+    } catch (firstError) {
+      console.error("libreoffice failed, trying soffice:", firstError.message);
+      await runCommand("soffice");
+    }
+
+    const expectedPdfPath = path.join(
+      outputDir,
+      `${path.basename(inputPath, path.extname(inputPath))}.pdf`
     );
-  });
+
+    try {
+      await fs.access(expectedPdfPath);
+    } catch (error) {
+      const files = await fs.readdir(outputDir).catch(() => []);
+
+      throw new Error(
+        `LibreOffice finished but PDF was not created. Expected: ${expectedPdfPath}. Files in output folder: ${files.join(
+          ", "
+        )}`
+      );
+    }
+  } finally {
+    await fs
+      .rm(libreOfficeProfileDir, {
+        recursive: true,
+        force: true,
+      })
+      .catch((cleanupError) => {
+        console.error(
+          "LibreOffice profile cleanup error:",
+          cleanupError.message
+        );
+      });
+  }
 };
 
 const validateTemplateBeforeUpload = async (templateBuffer) => {

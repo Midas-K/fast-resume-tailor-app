@@ -213,39 +213,50 @@ function AdminDashboard({ user, onLogout }) {
     setSelectedApplicationDate(null);
   };
 
-  const loadTemplatePreview = async (templateId) => {
+  const loadTemplatePreview = async (templateId, showErrorAlert = false) => {
     try {
       const url = `${API_URL}/api/resume-templates/${templateId}/preview-pdf`;
-
+  
       const response = await fetch(url, {
         headers: authHeaders(),
       });
-
+  
       if (!response.ok) {
         const result = await response.json().catch(() => null);
-        throw new Error(result?.message || "Could not load template preview.");
+        const message = result?.message || "Could not load template preview.";
+  
+        console.error("Template preview failed:", message);
+  
+        if (showErrorAlert) {
+          alert(message);
+        }
+  
+        return;
       }
-
+  
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
-
+  
       const previousUrl = templatePreviewUrlsRef.current[templateId];
-
+  
       if (previousUrl) {
         URL.revokeObjectURL(previousUrl);
       }
-
+  
       templatePreviewUrlsRef.current = {
         ...templatePreviewUrlsRef.current,
         [templateId]: objectUrl,
       };
-
+  
       setTemplatePreviewUrls({
         ...templatePreviewUrlsRef.current,
       });
     } catch (error) {
-      alert(error.message);
       console.error("Template preview failed:", error.message);
+  
+      if (showErrorAlert) {
+        alert(error.message);
+      }
     }
   };
 
@@ -318,9 +329,9 @@ function AdminDashboard({ user, onLogout }) {
       const templates = result.templates || [];
       setResumeTemplates(templates);
 
-      templates.forEach((template) => {
-        loadTemplatePreview(template.id);
-      });
+      for (const template of templates) {
+        await loadTemplatePreview(template.id);
+      }
     } catch (error) {
       alert(error.message);
     }
@@ -1293,7 +1304,7 @@ function AdminDashboard({ user, onLogout }) {
         <button
           type="button"
           className="prompt-action-btn view"
-          onClick={() => loadTemplatePreview(template.id)}
+          onClick={() => loadTemplatePreview(template.id, true)}
         >
           Refresh Preview
         </button>
