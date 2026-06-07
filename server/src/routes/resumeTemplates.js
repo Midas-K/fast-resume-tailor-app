@@ -190,11 +190,27 @@ const getTemplateValidationReport = ({ templateText = "" }) => {
 
   const requiredPlaceholders = [
     "{{FULL_NAME}}",
-    "{{CONTACT}}",
     "{{@SUMMARY}}",
     "{{@SKILLS}}",
     "{{@CERTIFICATIONS}}",
   ];
+  
+  requiredPlaceholders.forEach((placeholder) => {
+    if (!has(placeholder)) {
+      errors.push(`${placeholder} is missing.`);
+    }
+  });
+  
+  const hasContactBlock = has("{{CONTACT}}");
+  
+  const hasSeparateContactFields =
+    has("{{EMAIL}}") || has("{{PHONE}}") || has("{{LOCATION}}") || has("{{LINKS}}");
+  
+  if (!hasContactBlock && !hasSeparateContactFields) {
+    errors.push(
+      "Contact section is missing. Add {{CONTACT}} or use separate fields like {{EMAIL}}, {{PHONE}}, {{LOCATION}}, or {{LINKS}}."
+    );
+  }
 
   requiredPlaceholders.forEach((placeholder) => {
     if (!has(placeholder)) {
