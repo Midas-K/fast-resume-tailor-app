@@ -329,9 +329,9 @@ function AdminDashboard({ user, onLogout }) {
       const templates = result.templates || [];
       setResumeTemplates(templates);
 
-      for (const template of templates) {
-        await loadTemplatePreview(template.id);
-      }
+      // Do not auto-generate previews.
+      // LibreOffice uses too much memory on Render Free.
+      // Admin can click "Refresh Preview" for one template when needed.
     } catch (error) {
       alert(error.message);
     }
@@ -1426,7 +1426,9 @@ function AdminDashboard({ user, onLogout }) {
           className="template-preview-frame"
         />
       ) : (
-        <div className="template-preview-empty">Preview loading...</div>
+        <div className="template-preview-empty">
+          Preview not loaded. Click Refresh Preview to generate it.
+        </div>
       )}
     </div>
   );
