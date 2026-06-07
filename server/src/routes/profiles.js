@@ -646,12 +646,11 @@ router.get("/admin/all", requireAuth, requireAdmin, async (req, res) => {
       profiles: result.rows,
     });
   } catch (error) {
-    console.error("Admin load all profiles error:", error);
+    console.error("All profiles error:", error);
 
     res.status(500).json({
-      message: "Could not load admin profiles.",
+      message: "Could not load profiles.",
     });
   }
 });
-
 module.exports = router;

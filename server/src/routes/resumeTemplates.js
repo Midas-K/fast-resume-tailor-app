@@ -97,10 +97,327 @@ const escapeXml = (value) => {
     .replace(/'/g, "&apos;");
 };
 
+const decodeXmlEntities = (value) => {
+  return String(value || "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+};
+
 const stripBullet = (line) => {
   const text = String(line || "").trim();
 
   return text.replace(/^[-•]\s+/, "").replace(/^\*\s+/, "").trim();
+};
+
+const extractTextFromDocxBuffer = (templateBuffer) => {
+  try {
+    const zip = new PizZip(templateBuffer);
+    const documentFile = zip.file("word/document.xml");
+
+    if (!documentFile) {
+      return {
+        ok: false,
+        text: "",
+        paragraphs: [],
+        message: "DOCX is invalid. word/document.xml was not found.",
+      };
+    }
+
+    const documentXml = documentFile.asText();
+    const paragraphMatches = documentXml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+
+    const paragraphs = paragraphMatches
+      .map((paragraphXml) => {
+        const textPieces = [];
+
+        const tokenMatches =
+          paragraphXml.match(
+            /<w:t[\s\S]*?<\/w:t>|<w:tab\/>|<w:br\/>|<w:br [\s\S]*?\/>/g
+          ) || [];
+
+        tokenMatches.forEach((token) => {
+          if (token.startsWith("<w:t")) {
+            const text = token
+              .replace(/^<w:t[^>]*>/, "")
+              .replace(/<\/w:t>$/, "");
+
+            textPieces.push(decodeXmlEntities(text));
+          } else if (token.startsWith("<w:tab")) {
+            textPieces.push("\t");
+          } else if (token.startsWith("<w:br")) {
+            textPieces.push("\n");
+          }
+        });
+
+        return textPieces.join("").trim();
+      })
+      .filter(Boolean);
+
+    return {
+      ok: true,
+      text: paragraphs.join("\n"),
+      paragraphs,
+      message: "DOCX text extracted.",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      text: "",
+      paragraphs: [],
+      message:
+        error.message ||
+        "Could not read DOCX. Make sure this is a real .docx file.",
+    };
+  }
+};
+
+const normalizeTemplateText = (value = "") => {
+  return String(value || "")
+    .replace(/\r/g, "\n")
+    .replace(/\n+/g, "\n")
+    .trim();
+};
+
+const getTemplateValidationReport = ({ templateText = "", paragraphs = [] }) => {
+  const text = normalizeTemplateText(templateText);
+  const paragraphList = Array.isArray(paragraphs) ? paragraphs : [];
+
+  const errors = [];
+  const warnings = [];
+
+  const has = (placeholder) => text.includes(placeholder);
+
+  const requiredPlaceholders = [
+    "{{FULL_NAME}}",
+    "{{CONTACT}}",
+    "{{@SUMMARY}}",
+    "{{@SKILLS}}",
+    "{{@CERTIFICATIONS}}",
+  ];
+
+  requiredPlaceholders.forEach((placeholder) => {
+    if (!has(placeholder)) {
+      errors.push(`${placeholder} is missing.`);
+    }
+  });
+
+  const hasSimpleEducation = has("{{@EDUCATION}}");
+  const hasEducationLoopStart = has("{{#EDUCATION_ITEMS}}");
+  const hasEducationLoopEnd = has("{{/EDUCATION_ITEMS}}");
+
+  if (!hasSimpleEducation && !hasEducationLoopStart) {
+    errors.push(
+      "Education section is missing. Add {{@EDUCATION}} or use {{#EDUCATION_ITEMS}} ... {{/EDUCATION_ITEMS}}."
+    );
+  }
+
+  if (hasEducationLoopStart && !hasEducationLoopEnd) {
+    errors.push(
+      "{{#EDUCATION_ITEMS}} is opened but {{/EDUCATION_ITEMS}} is missing."
+    );
+  }
+
+  if (!hasEducationLoopStart && hasEducationLoopEnd) {
+    errors.push(
+      "{{/EDUCATION_ITEMS}} exists but {{#EDUCATION_ITEMS}} is missing."
+    );
+  }
+
+  const hasSimpleExperience = has("{{@EXPERIENCE}}");
+  const hasExperienceLoopStart = has("{{#EXPERIENCE_ITEMS}}");
+  const hasExperienceLoopEnd = has("{{/EXPERIENCE_ITEMS}}");
+
+  if (!hasSimpleExperience && !hasExperienceLoopStart) {
+    errors.push(
+      "Experience section is missing. Add {{@EXPERIENCE}} or use {{#EXPERIENCE_ITEMS}} ... {{/EXPERIENCE_ITEMS}}."
+    );
+  }
+
+  if (hasExperienceLoopStart && !hasExperienceLoopEnd) {
+    errors.push(
+      "{{#EXPERIENCE_ITEMS}} is opened but {{/EXPERIENCE_ITEMS}} is missing."
+    );
+  }
+
+  if (!hasExperienceLoopStart && hasExperienceLoopEnd) {
+    errors.push(
+      "{{/EXPERIENCE_ITEMS}} exists but {{#EXPERIENCE_ITEMS}} is missing."
+    );
+  }
+
+  if (hasExperienceLoopStart && !has("{{@DETAILS}}")) {
+    errors.push("{{@DETAILS}} is missing inside the experience loop.");
+  }
+
+  if (has("{{@DETAILS}}")) {
+    const badDetailsParagraph = paragraphList.find(
+      (paragraph) =>
+        paragraph.includes("{{@DETAILS}}") &&
+        paragraph.trim() !== "{{@DETAILS}}"
+    );
+
+    if (badDetailsParagraph) {
+      errors.push(
+        "{{@DETAILS}} must be alone in its own paragraph. Do not write text before or after {{@DETAILS}}."
+      );
+    }
+  }
+
+  if (has("{{@SUMMARY}}")) {
+    const badSummaryParagraph = paragraphList.find(
+      (paragraph) =>
+        paragraph.includes("{{@SUMMARY}}") &&
+        paragraph.trim() !== "{{@SUMMARY}}"
+    );
+
+    if (badSummaryParagraph) {
+      errors.push(
+        "{{@SUMMARY}} must be alone in its own paragraph. Do not write text before or after {{@SUMMARY}}."
+      );
+    }
+  }
+
+  if (has("{{@SKILLS}}")) {
+    const badSkillsParagraph = paragraphList.find(
+      (paragraph) =>
+        paragraph.includes("{{@SKILLS}}") &&
+        paragraph.trim() !== "{{@SKILLS}}"
+    );
+
+    if (badSkillsParagraph) {
+      errors.push(
+        "{{@SKILLS}} must be alone in its own paragraph. Do not write text before or after {{@SKILLS}}."
+      );
+    }
+  }
+
+  if (has("{{@CERTIFICATIONS}}")) {
+    const badCertificationsParagraph = paragraphList.find(
+      (paragraph) =>
+        paragraph.includes("{{@CERTIFICATIONS}}") &&
+        paragraph.trim() !== "{{@CERTIFICATIONS}}"
+    );
+
+    if (badCertificationsParagraph) {
+      errors.push(
+        "{{@CERTIFICATIONS}} must be alone in its own paragraph. Do not write text before or after {{@CERTIFICATIONS}}."
+      );
+    }
+  }
+
+  if (has("{{@EDUCATION}}")) {
+    const badEducationParagraph = paragraphList.find(
+      (paragraph) =>
+        paragraph.includes("{{@EDUCATION}}") &&
+        paragraph.trim() !== "{{@EDUCATION}}"
+    );
+
+    if (badEducationParagraph) {
+      errors.push(
+        "{{@EDUCATION}} must be alone in its own paragraph. Do not write text before or after {{@EDUCATION}}."
+      );
+    }
+  }
+
+  if (has("{{@EXPERIENCE}}")) {
+    const badExperienceParagraph = paragraphList.find(
+      (paragraph) =>
+        paragraph.includes("{{@EXPERIENCE}}") &&
+        paragraph.trim() !== "{{@EXPERIENCE}}"
+    );
+
+    if (badExperienceParagraph) {
+      errors.push(
+        "{{@EXPERIENCE}} must be alone in its own paragraph. Do not write text before or after {{@EXPERIENCE}}."
+      );
+    }
+  }
+
+  // LOCATION is optional. Missing LOCATION is not an error.
+  if (!has("{{LOCATION}}")) {
+    warnings.push("{{LOCATION}} is optional. This template can upload without it.");
+  }
+
+  const allowedPlaceholders = new Set([
+    "{{FULL_NAME}}",
+    "{{TITLE}}",
+    "{{CONTACT}}",
+    "{{EMAIL}}",
+    "{{PHONE}}",
+    "{{LOCATION}}",
+    "{{LINKS}}",
+
+    "{{@SUMMARY}}",
+    "{{@EDUCATION}}",
+    "{{@SKILLS}}",
+    "{{@EXPERIENCE}}",
+    "{{@CERTIFICATIONS}}",
+
+    "{{#EDUCATION_ITEMS}}",
+    "{{/EDUCATION_ITEMS}}",
+    "{{SCHOOL}}",
+    "{{DEGREE}}",
+    "{{MAJOR}}",
+    "{{TIMELINE}}",
+    "{{DEGREE_MAJOR}}",
+    "{{SCHOOL_DEGREE_MAJOR}}",
+
+    "{{#EXPERIENCE_ITEMS}}",
+    "{{/EXPERIENCE_ITEMS}}",
+    "{{COMPANY_NAME}}",
+    "{{TITLE_COMPANY}}",
+    "{{COMPANY_TITLE}}",
+    "{{@DETAILS}}",
+  ]);
+
+  const foundPlaceholders = text.match(/\{\{[^}]+\}\}/g) || [];
+
+  foundPlaceholders.forEach((placeholder) => {
+    if (!allowedPlaceholders.has(placeholder)) {
+      warnings.push(`${placeholder} is not recognized. Check spelling.`);
+    }
+  });
+
+  const likelyBrokenPlaceholder = text.match(/\{[^{}]*\{|\}[^{}]*\}/g);
+
+  if (likelyBrokenPlaceholder) {
+    warnings.push(
+      "Some braces look unusual. Make sure placeholders are typed exactly like {{FULL_NAME}}."
+    );
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings: [...new Set(warnings)],
+  };
+};
+
+const getDocxtemplaterErrorMessages = (error) => {
+  const messages = [];
+
+  if (error?.properties?.errors && Array.isArray(error.properties.errors)) {
+    error.properties.errors.forEach((item) => {
+      if (item?.properties?.explanation) {
+        messages.push(item.properties.explanation);
+      } else if (item?.message) {
+        messages.push(item.message);
+      }
+    });
+  }
+
+  if (error?.properties?.explanation) {
+    messages.push(error.properties.explanation);
+  }
+
+  if (error?.message) {
+    messages.push(error.message);
+  }
+
+  return [...new Set(messages.filter(Boolean))];
 };
 
 const parseStyledSegments = (text, options = {}) => {
@@ -586,12 +903,14 @@ const makePreviewDocxBuffer = (templateBuffer) => {
       ],
       justify: true,
     }),
+
     education: makeSectionXml({
       lines: [
         "**Bachelor's Degree** in Computer Science, Metropolitan State University | Saint Paul, MN | 2013 - 2017",
       ],
       justify: true,
     }),
+
     skills: makeSectionXml({
       lines: [
         "LLMOps & Model Operations: Model versioning, experiment tracking, CI/CD for ML",
@@ -601,7 +920,9 @@ const makePreviewDocxBuffer = (templateBuffer) => {
       boldBeforeColon: true,
       justify: true,
     }),
+
     experience: "",
+
     certifications: makeSectionXml({
       lines: [
         "**AWS Certified Machine Learning - Specialty**",
@@ -643,7 +964,14 @@ const runLibreOfficeConvertForPreview = (inputPath, outputDir) => {
         if (error) {
           console.error("LibreOffice preview stdout:", stdout);
           console.error("LibreOffice preview stderr:", stderr);
-          reject(error);
+          reject(
+            new Error(
+              stderr ||
+                stdout ||
+                error.message ||
+                "LibreOffice failed to convert DOCX to PDF."
+            )
+          );
           return;
         }
 
@@ -657,6 +985,31 @@ const validateTemplateBeforeUpload = async (templateBuffer) => {
   let tempDir = null;
 
   try {
+    const extracted = extractTextFromDocxBuffer(templateBuffer);
+
+    if (!extracted.ok) {
+      return {
+        isValid: false,
+        message: extracted.message,
+        errors: [extracted.message],
+        warnings: [],
+      };
+    }
+
+    const validationReport = getTemplateValidationReport({
+      templateText: extracted.text,
+      paragraphs: extracted.paragraphs,
+    });
+
+    if (!validationReport.isValid) {
+      return {
+        isValid: false,
+        message: `Template is invalid:\n${validationReport.errors.join("\n")}`,
+        errors: validationReport.errors,
+        warnings: validationReport.warnings,
+      };
+    }
+
     const docxBuffer = makePreviewDocxBuffer(templateBuffer);
 
     tempDir = await fs.mkdtemp(
@@ -672,9 +1025,13 @@ const validateTemplateBeforeUpload = async (templateBuffer) => {
     return {
       isValid: true,
       message: "Template is valid.",
+      errors: [],
+      warnings: validationReport.warnings,
     };
   } catch (error) {
     console.error("Template validation error:", error);
+
+    const docxErrors = getDocxtemplaterErrorMessages(error);
 
     if (error.properties && error.properties.errors) {
       console.error(
@@ -683,10 +1040,23 @@ const validateTemplateBeforeUpload = async (templateBuffer) => {
       );
     }
 
+    const errors =
+      docxErrors.length > 0
+        ? docxErrors
+        : [
+            error.message ||
+              "Template preview generation failed. Check placeholders and DOCX formatting.",
+          ];
+
     return {
       isValid: false,
-      message:
-        "Template is invalid. Make sure every {{@...}} placeholder is alone in its own paragraph. Loop closing tags like {{/EXPERIENCE_ITEMS}} must not be in the same paragraph as {{@DETAILS}}. Use normal Enter, not Shift + Enter.",
+      message: `Could not generate preview resume:\n${errors.join("\n")}`,
+      errors,
+      warnings: [
+        "Make sure every {{@...}} placeholder is alone in its own paragraph.",
+        "Make sure loop tags like {{#EXPERIENCE_ITEMS}} and {{/EXPERIENCE_ITEMS}} are correctly opened and closed.",
+        "Use normal Enter in Word, not Shift + Enter, around raw placeholders like {{@DETAILS}}.",
+      ],
     };
   } finally {
     if (tempDir) {
@@ -839,20 +1209,21 @@ router.get(
     } catch (error) {
       console.error("Resume template preview error:", error);
 
-      if (error.properties && error.properties.errors) {
-        console.error(
-          "DOCX preview template errors:",
-          JSON.stringify(error.properties.errors, null, 2)
-        );
+      const docxErrors = getDocxtemplaterErrorMessages(error);
 
+      if (docxErrors.length > 0) {
         return res.status(400).json({
-          message:
-            "Preview failed. Make sure every {{@...}} placeholder is alone in its own paragraph. Use {{@SUMMARY}} for formatted blocks and loops like {{#EXPERIENCE_ITEMS}}...{{/EXPERIENCE_ITEMS}} for advanced layouts.",
+          message: `Could not generate preview resume:\n${docxErrors.join(
+            "\n"
+          )}`,
+          errors: docxErrors,
         });
       }
 
       return res.status(500).json({
-        message: "Could not generate template preview.",
+        message: `Could not generate preview resume. ${
+          error.message || "Unknown preview error."
+        }`,
       });
     } finally {
       if (tempDir) {
@@ -906,6 +1277,8 @@ router.post(
       if (!validationResult.isValid) {
         return res.status(400).json({
           message: validationResult.message,
+          errors: validationResult.errors || [],
+          warnings: validationResult.warnings || [],
         });
       }
 
@@ -977,6 +1350,7 @@ router.post(
         return res.status(201).json({
           message: "DOCX resume template uploaded successfully.",
           template: inserted.rows[0],
+          warnings: validationResult.warnings || [],
         });
       } catch (error) {
         await client.query("ROLLBACK");
@@ -994,7 +1368,9 @@ router.post(
       }
 
       return res.status(500).json({
-        message: "Could not upload resume template.",
+        message: `Could not upload resume template. ${
+          error.message || "Unknown upload error."
+        }`,
       });
     }
   }

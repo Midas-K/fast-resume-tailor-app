@@ -330,52 +330,67 @@ function AdminDashboard({ user, onLogout }) {
       alert("Template name is required.");
       return;
     }
-
+  
     if (!templateFile) {
       alert("Please choose a DOCX template file.");
       return;
     }
-
+  
     if (!templateFile.name.toLowerCase().endsWith(".docx")) {
       alert("Only DOCX files are allowed.");
       return;
     }
-
+  
     try {
       setTemplateUploading(true);
-
+  
       const formData = new FormData();
       formData.append("name", templateName.trim());
       formData.append("description", templateDescription.trim());
       formData.append("isDefault", String(templateIsDefault));
       formData.append("templateFile", templateFile);
-
+  
       const url = `${API_URL}/api/resume-templates`;
-
+  
       const response = await fetch(url, {
         method: "POST",
         headers: authHeaders(),
         body: formData,
       });
-
+  
       const result = await readJsonResponse(response, url);
-
+  
       if (!response.ok) {
-        throw new Error(result.message || "Could not upload resume template.");
+        const details = [
+          result.message,
+          ...(result.errors || []),
+          ...(result.warnings || []).map((warning) => `Warning: ${warning}`),
+        ]
+          .filter(Boolean)
+          .join("\n");
+  
+        throw new Error(details || "Could not upload resume template.");
       }
-
-      alert(result.message || "DOCX resume template uploaded.");
-
+  
+      const successDetails = [
+        result.message || "DOCX resume template uploaded.",
+        ...(result.warnings || []).map((warning) => `Warning: ${warning}`),
+      ]
+        .filter(Boolean)
+        .join("\n");
+  
+      alert(successDetails);
+  
       setTemplateName("");
       setTemplateDescription("");
       setTemplateIsDefault(false);
       setTemplateFile(null);
-
+  
       const fileInput = document.getElementById("resumeTemplateFile");
       if (fileInput) {
         fileInput.value = "";
       }
-
+  
       await loadResumeTemplates();
     } catch (error) {
       alert(error.message);

@@ -40,7 +40,6 @@ const canManageAdminAccounts = (email) => {
 };
 
 const canInspectAdminUsers = (email) => {
-  // Owner only can inspect other admins' users.
   return isOwnerEmail(email);
 };
 
@@ -60,7 +59,8 @@ const canDeleteTargetAccount = ({ requesterEmail, requesterId, targetUser }) => 
   if (targetIsOwner) return false;
   if (targetIsSpecialAdmin) return false;
 
-  // Special admin can approve/block admins only. No permanent delete.
+  // Special admin can approve/block normal admins only.
+  // Special admin cannot permanently delete accounts.
   if (requesterIsSpecialAdmin) return false;
 
   // Owner can delete normal admins and users.
@@ -71,9 +71,10 @@ const canDeleteTargetAccount = ({ requesterEmail, requesterId, targetUser }) => 
   // Normal admins cannot delete admins.
   if (targetIsAdmin) return false;
 
-  // Normal admins can delete pending users or users they approved.
+  // Normal admins can delete pending users or users approved by them.
   if (targetIsUser) {
     if (!targetUser.is_approved) return true;
+
     return String(targetUser.approved_by_admin_id || "") === String(requesterId);
   }
 
