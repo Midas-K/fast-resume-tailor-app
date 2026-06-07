@@ -245,6 +245,7 @@ function AdminDashboard({ user, onLogout }) {
       });
     } catch (error) {
       alert(error.message);
+      console.error("Template preview failed:", error.message);
     }
   };
 

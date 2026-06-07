@@ -44,7 +44,6 @@ const requireAuth = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
     const accountType = normalizeAccountType(decoded);
 
     req.user = {
@@ -108,7 +107,6 @@ const decodeXmlEntities = (value) => {
 
 const stripBullet = (line) => {
   const text = String(line || "").trim();
-
   return text.replace(/^[-•]\s+/, "").replace(/^\*\s+/, "").trim();
 };
 
@@ -181,7 +179,7 @@ const normalizeTemplateText = (value = "") => {
     .trim();
 };
 
-const getTemplateValidationReport = ({ templateText = "", paragraphs = [] }) => {
+const getTemplateValidationReport = ({ templateText = "" }) => {
   const text = normalizeTemplateText(templateText);
 
   const errors = [];
@@ -251,7 +249,6 @@ const getTemplateValidationReport = ({ templateText = "", paragraphs = [] }) => 
     errors.push("{{@DETAILS}} is missing inside the experience loop.");
   }
 
-  // LOCATION is optional. Missing LOCATION is not an error.
   if (!has("{{LOCATION}}")) {
     warnings.push("{{LOCATION}} is optional. This template can upload without it.");
   }
@@ -301,42 +298,6 @@ const getTemplateValidationReport = ({ templateText = "", paragraphs = [] }) => 
     errors: [...new Set(errors)],
     warnings: [...new Set(warnings)],
   };
-};
-
-const has = (placeholder) => text.includes(placeholder);
-
-const normalizeParagraphForPlaceholderCheck = (paragraph) => {
-  return String(paragraph || "")
-    .replace(/\u00a0/g, " ")
-    .replace(/\t/g, "")
-    .replace(/\s+/g, "")
-    .trim();
-};
-
-const isRawPlaceholderAlone = (paragraph, placeholder) => {
-  return normalizeParagraphForPlaceholderCheck(paragraph) === placeholder;
-};
-
-const validateRawPlaceholderIsAlone = (placeholder) => {
-  if (!has(placeholder)) return;
-
-  const matchingParagraphs = paragraphList.filter((paragraph) =>
-    paragraph.includes(placeholder)
-  );
-
-  if (matchingParagraphs.length === 0) {
-    return;
-  }
-
-  const hasValidParagraph = matchingParagraphs.some((paragraph) =>
-    isRawPlaceholderAlone(paragraph, placeholder)
-  );
-
-  if (!hasValidParagraph) {
-    errors.push(
-      `${placeholder} must be alone in its own paragraph. Do not write text before or after ${placeholder}.`
-    );
-  }
 };
 
 const getDocxtemplaterErrorMessages = (error) => {
@@ -475,7 +436,7 @@ const parseStyledSegments = (text, options = {}) => {
 };
 
 const makeRunXml = ({
-  text,
+  text = "",
   bold = false,
   italic = false,
   underline = false,
@@ -962,7 +923,6 @@ const validateTemplateBeforeUpload = async (templateBuffer) => {
     const docxPath = path.join(tempDir, "template_validation.docx");
 
     await fs.writeFile(docxPath, docxBuffer);
-
     await runLibreOfficeConvertForPreview(docxPath, tempDir);
 
     return {
@@ -1137,7 +1097,6 @@ router.get(
       const pdfPath = path.join(tempDir, `${baseFileName}.pdf`);
 
       await fs.writeFile(docxPath, docxBuffer);
-
       await runLibreOfficeConvertForPreview(docxPath, tempDir);
 
       const pdfBuffer = await fs.readFile(pdfPath);
