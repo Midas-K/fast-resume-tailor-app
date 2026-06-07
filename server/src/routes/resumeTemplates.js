@@ -183,7 +183,6 @@ const normalizeTemplateText = (value = "") => {
 
 const getTemplateValidationReport = ({ templateText = "", paragraphs = [] }) => {
   const text = normalizeTemplateText(templateText);
-  const paragraphList = Array.isArray(paragraphs) ? paragraphs : [];
 
   const errors = [];
   const warnings = [];
@@ -252,15 +251,6 @@ const getTemplateValidationReport = ({ templateText = "", paragraphs = [] }) => 
     errors.push("{{@DETAILS}} is missing inside the experience loop.");
   }
 
-  [
-    "{{@SUMMARY}}",
-    "{{@EDUCATION}}",
-    "{{@SKILLS}}",
-    "{{@EXPERIENCE}}",
-    "{{@DETAILS}}",
-    "{{@CERTIFICATIONS}}",
-  ].forEach(validateRawPlaceholderIsAlone);
-
   // LOCATION is optional. Missing LOCATION is not an error.
   if (!has("{{LOCATION}}")) {
     warnings.push("{{LOCATION}} is optional. This template can upload without it.");
@@ -306,17 +296,9 @@ const getTemplateValidationReport = ({ templateText = "", paragraphs = [] }) => 
     }
   });
 
-  const likelyBrokenPlaceholder = text.match(/\{[^{}]*\{|\}[^{}]*\}/g);
-
-  if (likelyBrokenPlaceholder) {
-    warnings.push(
-      "Some braces look unusual. Make sure placeholders are typed exactly like {{FULL_NAME}}."
-    );
-  }
-
   return {
     isValid: errors.length === 0,
-    errors,
+    errors: [...new Set(errors)],
     warnings: [...new Set(warnings)],
   };
 };

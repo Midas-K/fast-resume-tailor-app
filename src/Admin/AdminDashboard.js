@@ -361,15 +361,22 @@ function AdminDashboard({ user, onLogout }) {
       const result = await readJsonResponse(response, url);
   
       if (!response.ok) {
+        const errorLines =
+          result.errors && result.errors.length > 0
+            ? result.errors
+            : result.message
+            ? [result.message]
+            : ["Could not upload resume template."];
+      
         const details = [
-          result.message,
-          ...(result.errors || []),
+          "Template upload failed:",
+          ...errorLines,
           ...(result.warnings || []).map((warning) => `Warning: ${warning}`),
         ]
           .filter(Boolean)
           .join("\n");
-  
-        throw new Error(details || "Could not upload resume template.");
+      
+        throw new Error(details);
       }
   
       const successDetails = [
