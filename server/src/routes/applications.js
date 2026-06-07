@@ -5,13 +5,18 @@ const pool = require("../db");
 const router = express.Router();
 
 const OWNER_EMAIL = process.env.OWNER_EMAIL;
+const SPECIAL_AUTO_APPROVE_EMAIL = process.env.SPECIAL_AUTO_APPROVE_EMAIL;
 
 const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
 
 const isOwnerEmail = (email) => {
+  return OWNER_EMAIL && normalizeEmail(email) === normalizeEmail(OWNER_EMAIL);
+};
+
+const isSpecialAdminEmail = (email) => {
   return (
-    OWNER_EMAIL &&
-    normalizeEmail(email) === normalizeEmail(OWNER_EMAIL)
+    SPECIAL_AUTO_APPROVE_EMAIL &&
+    normalizeEmail(email) === normalizeEmail(SPECIAL_AUTO_APPROVE_EMAIL)
   );
 };
 
@@ -53,6 +58,116 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+const getDateRange = ({ deleteType, date, month, year }) => {
+  if (deleteType === "all") {
+    return {
+      start: null,
+      end: null,
+    };
+  }
+
+  if (deleteType === "day") {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new Error("Valid date is required. Use YYYY-MM-DD.");
+    }
+
+    return {
+      start: `${date}T00:00:00.000Z`,
+      end: `${date}T23:59:59.999Z`,
+    };
+  }
+
+  if (deleteType === "month") {
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      throw new Error("Valid month is required. Use YYYY-MM.");
+    }
+
+    const [yearValue, monthValue] = month.split("-").map(Number);
+    const start = new Date(Date.UTC(yearValue, monthValue - 1, 1));
+    const end = new Date(Date.UTC(yearValue, monthValue, 1));
+
+    return {
+      start: start.toISOString(),
+      end: end.toISOString(),
+    };
+  }
+
+  if (deleteType === "year") {
+    if (!year || !/^\d{4}$/.test(String(year))) {
+      throw new Error("Valid year is required. Use YYYY.");
+    }
+
+    const yearValue = Number(year);
+
+    return {
+      start: new Date(Date.UTC(yearValue, 0, 1)).toISOString(),
+      end: new Date(Date.UTC(yearValue + 1, 0, 1)).toISOString(),
+    };
+  }
+
+  throw new Error("Invalid delete type. Use all, day, month, or year.");
+};
+
+const canAdminManageProfileApplications = async ({ profileId, adminUser }) => {
+  if (isSpecialAdminEmail(adminUser.email)) {
+    return {
+      allowed: false,
+      status: 403,
+      message: "Special admin cannot delete user application counts.",
+      profile: null,
+    };
+  }
+
+  const profileCheck = await pool.query(
+    `
+    SELECT
+      profiles.id,
+      profiles.user_id,
+      users.approved_by_admin_id
+    FROM profiles
+    JOIN users ON users.id = profiles.user_id
+    WHERE profiles.id = $1
+    `,
+    [profileId]
+  );
+
+  if (profileCheck.rows.length === 0) {
+    return {
+      allowed: false,
+      status: 404,
+      message: "Profile not found.",
+      profile: null,
+    };
+  }
+
+  const profile = profileCheck.rows[0];
+
+  if (isOwnerEmail(adminUser.email)) {
+    return {
+      allowed: true,
+      status: 200,
+      message: "Allowed.",
+      profile,
+    };
+  }
+
+  if (String(profile.approved_by_admin_id) !== String(adminUser.id)) {
+    return {
+      allowed: false,
+      status: 403,
+      message: "You can only delete applications for users approved by you.",
+      profile,
+    };
+  }
+
+  return {
+    allowed: true,
+    status: 200,
+    message: "Allowed.",
+    profile,
+  };
+};
+
 router.get("/admin/summary", requireAuth, requireAdmin, async (req, res) => {
   try {
     let result;
@@ -88,6 +203,10 @@ router.get("/admin/summary", requireAuth, requireAdmin, async (req, res) => {
         ORDER BY application_count DESC, company_name ASC
         `
       );
+    } else if (isSpecialAdminEmail(req.user.email)) {
+      result = {
+        rows: [],
+      };
     } else {
       result = await pool.query(
         `
@@ -135,6 +254,79 @@ router.get("/admin/summary", requireAuth, requireAdmin, async (req, res) => {
     });
   }
 });
+
+router.delete(
+  "/admin/profile/:profileId",
+  requireAuth,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { profileId } = req.params;
+      const { deleteType, date, month, year } = req.body || {};
+
+      const permission = await canAdminManageProfileApplications({
+        profileId,
+        adminUser: req.user,
+      });
+
+      if (!permission.allowed) {
+        return res.status(permission.status).json({
+          message: permission.message,
+        });
+      }
+
+      let range;
+
+      try {
+        range = getDateRange({
+          deleteType,
+          date,
+          month,
+          year,
+        });
+      } catch (rangeError) {
+        return res.status(400).json({
+          message: rangeError.message,
+        });
+      }
+
+      let deleted;
+
+      if (deleteType === "all") {
+        deleted = await pool.query(
+          `
+          DELETE FROM applications
+          WHERE profile_id = $1
+          RETURNING id
+          `,
+          [profileId]
+        );
+      } else {
+        deleted = await pool.query(
+          `
+          DELETE FROM applications
+          WHERE profile_id = $1
+          AND created_at >= $2
+          AND created_at < $3
+          RETURNING id
+          `,
+          [profileId, range.start, range.end]
+        );
+      }
+
+      return res.json({
+        message: `${deleted.rowCount} application record(s) deleted.`,
+        deletedCount: deleted.rowCount,
+      });
+    } catch (error) {
+      console.error("Admin delete profile applications error:", error);
+
+      return res.status(500).json({
+        message: "Could not delete application records.",
+      });
+    }
+  }
+);
 
 router.get("/profile-counts", requireAuth, async (req, res) => {
   try {

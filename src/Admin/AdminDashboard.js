@@ -706,6 +706,78 @@ function AdminDashboard({ user, onLogout }) {
     }
   };
 
+  const deleteProfileApplications = async ({
+    profile,
+    deleteType,
+    date = "",
+    month = "",
+    year = "",
+  }) => {
+    if (!profile?.id) return;
+  
+    const profileName = profile.profile_name || profile.name || "this profile";
+  
+    const labelMap = {
+      all: "ALL application records",
+      day: `application records for ${date}`,
+      month: `application records for ${month}`,
+      year: `application records for ${year}`,
+    };
+  
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${labelMap[deleteType]} for ${profileName}?\n\nThis cannot be undone.`
+    );
+  
+    if (!confirmed) return;
+  
+    try {
+      const url = `${API_URL}/api/applications/admin/profile/${profile.id}`;
+  
+      const response = await fetch(url, {
+        method: "DELETE",
+        headers: jsonAuthHeaders(),
+        body: JSON.stringify({
+          deleteType,
+          date,
+          month,
+          year,
+        }),
+      });
+  
+      const result = await readJsonResponse(response, url);
+  
+      if (!response.ok) {
+        throw new Error(result.message || "Could not delete application records.");
+      }
+  
+      alert(result.message || "Application records deleted.");
+  
+      await loadAdminData();
+  
+      if (selectedProfileApplications?.profile?.id === profile.id) {
+        const updatedProfile =
+          allProfiles.find((item) => String(item.id) === String(profile.id)) ||
+          profile;
+  
+        const rows = getProfileApplicationRows(updatedProfile);
+        const dateGroups = getApplicationDateGroups(rows);
+  
+        setSelectedProfileApplications({
+          profile: updatedProfile,
+          rows,
+          dateGroups,
+        });
+  
+        if (deleteType === "all") {
+          setSelectedApplicationDate(null);
+          setApplicationDashboardMode("dates");
+        }
+      }
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
   useEffect(() => {
     loadAdminData();
     loadResumeTemplates();
@@ -846,6 +918,30 @@ function AdminDashboard({ user, onLogout }) {
           (group) => group.date === selectedApplicationDate
         )?.rows || []
       : [];
+
+  const getIsoDateFromFormattedDate = (formattedDate) => {
+    if (!formattedDate) return "";
+  
+    const parsed = new Date(formattedDate);
+  
+    if (Number.isNaN(parsed.getTime())) {
+      return "";
+    }
+  
+    return parsed.toISOString().slice(0, 10);
+  };
+  
+  const getMonthFromDate = (dateValue) => {
+    if (!dateValue) return "";
+  
+    return String(dateValue).slice(0, 7);
+  };
+  
+  const getYearFromDate = (dateValue) => {
+    if (!dateValue) return "";
+  
+    return String(dateValue).slice(0, 4);
+  };
 
   const renderUserTable = (tableUsers, emptyMessage = "No users found.") => (
     <div className="admin-table-wrap modern">
@@ -1057,6 +1153,19 @@ function AdminDashboard({ user, onLogout }) {
                     onClick={() => openProfileApplications(profile)}
                   >
                     View Applications ({getProfileApplicationRows(profile).length})
+                  </button>
+
+                  <button
+                    type="button"
+                    className="block-btn"
+                    onClick={() =>
+                      deleteProfileApplications({
+                        profile,
+                        deleteType: "all",
+                      })
+                    }
+                  >
+                    Delete All Applications
                   </button>
 
                   <button
@@ -1707,6 +1816,7 @@ function AdminDashboard({ user, onLogout }) {
                         <th>No.</th>
                         <th>Date</th>
                         <th>Applications</th>
+                        <th>Action</th>
                       </tr>
                     </thead>
 
@@ -1730,6 +1840,23 @@ function AdminDashboard({ user, onLogout }) {
                               <span className="status-badge approved">
                                 {group.rows.length}
                               </span>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="block-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+
+                                  deleteProfileApplications({
+                                    profile: selectedProfileApplications.profile,
+                                    deleteType: "day",
+                                    date: getIsoDateFromFormattedDate(group.date),
+                                  });
+                                }}
+                              >
+                                Delete This Day
+                              </button>
                             </td>
                           </tr>
                         )
@@ -1755,13 +1882,79 @@ function AdminDashboard({ user, onLogout }) {
                   <p>{selectedApplicationDate} application list.</p>
                 </div>
 
-                <button
-                  type="button"
-                  className="refresh-btn"
-                  onClick={backToProfileApplications}
-                >
-                  Back to Dates
-                </button>
+                <div className="profile-admin-actions compact-actions">
+                  <button
+                    type="button"
+                    className="block-btn"
+                    onClick={() => {
+                      const selectedIsoDate =
+                        getIsoDateFromFormattedDate(selectedApplicationDate);
+
+                      deleteProfileApplications({
+                        profile: selectedProfileApplications.profile,
+                        deleteType: "day",
+                        date: selectedIsoDate,
+                      });
+                    }}
+                  >
+                    Delete This Day
+                  </button>
+
+                  <button
+                    type="button"
+                    className="block-btn"
+                    onClick={() => {
+                      const selectedIsoDate =
+                        getIsoDateFromFormattedDate(selectedApplicationDate);
+
+                      deleteProfileApplications({
+                        profile: selectedProfileApplications.profile,
+                        deleteType: "month",
+                        month: getMonthFromDate(selectedIsoDate),
+                      });
+                    }}
+                  >
+                    Delete This Month
+                  </button>
+
+                  <button
+                    type="button"
+                    className="block-btn"
+                    onClick={() => {
+                      const selectedIsoDate =
+                        getIsoDateFromFormattedDate(selectedApplicationDate);
+
+                      deleteProfileApplications({
+                        profile: selectedProfileApplications.profile,
+                        deleteType: "year",
+                        year: getYearFromDate(selectedIsoDate),
+                      });
+                    }}
+                  >
+                    Delete This Year
+                  </button>
+
+                  <button
+                    type="button"
+                    className="block-btn"
+                    onClick={() =>
+                      deleteProfileApplications({
+                        profile: selectedProfileApplications.profile,
+                        deleteType: "all",
+                      })
+                    }
+                  >
+                    Delete All
+                  </button>
+
+                  <button
+                    type="button"
+                    className="refresh-btn"
+                    onClick={backToProfileApplications}
+                  >
+                    Back to Dates
+                  </button>
+                </div>
               </div>
 
               {selectedDateApplications.length === 0 ? (
@@ -1834,6 +2027,7 @@ function AdminDashboard({ user, onLogout }) {
                     <th>Resume Template</th>
                     <th>Whole Application Count</th>
                     <th>Most Recent Application Count</th>
+                    <th>Delete Application Counts</th>
                   </tr>
                 </thead>
 
@@ -1949,12 +2143,53 @@ function AdminDashboard({ user, onLogout }) {
                           {getMostRecentApplicationCount(profile)}
                         </span>
                       </td>
+                      <td>
+                        <div className="profile-admin-actions compact-actions">
+                          <button
+                            type="button"
+                            className="block-btn"
+                            onClick={() =>
+                              deleteProfileApplications({
+                                profile,
+                                deleteType: "all",
+                              })
+                            }
+                          >
+                            Delete All
+                          </button>
+
+                          <button
+                            type="button"
+                            className="block-btn"
+                            onClick={() => {
+                              const rows = getProfileApplicationRows(profile);
+                              const latestRow = rows[rows.length - 1];
+                              const latestDate = latestRow?.appliedAt
+                                ? new Date(latestRow.appliedAt).toISOString().slice(0, 10)
+                                : "";
+
+                              if (!latestDate) {
+                                alert("No application date found for this profile.");
+                                return;
+                              }
+
+                              deleteProfileApplications({
+                                profile,
+                                deleteType: "day",
+                                date: latestDate,
+                              });
+                            }}
+                          >
+                            Delete Latest Day
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
 
                   {allProfiles.length === 0 && (
                     <tr>
-                      <td colSpan="11">No profiles found.</td>
+                      <td colSpan="12">No profiles found.</td>
                     </tr>
                   )}
                 </tbody>
