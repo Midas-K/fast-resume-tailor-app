@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 
-const API_URL = process.env.REACT_APP_API_URL || "";
+import AppShell from "../UI/AppShell";
+import Icon from "../UI/Icon";
+import IconButton from "../UI/IconButton";
+import { API_URL, getToken } from "../shared/api/client";
 
 function BuildResumeDashboard({
   user,
@@ -12,12 +15,6 @@ function BuildResumeDashboard({
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const getToken = () => localStorage.getItem("rta_token");
-
-  const getAccountType = () => {
-    return user?.accountType || user?.account_type || "user";
-  };
 
   const resetApplicationInputs = () => {
     setRoleName("");
@@ -103,29 +100,16 @@ function BuildResumeDashboard({
   };
 
   return (
-    <div className="build-fast-page">
-      <header className="fast-topbar">
-        <div>
-          <span className="fast-kicker">Build Resume</span>
-          <h1>Generate resume from profile</h1>
-        </div>
-
-        <div className="fast-topbar-actions">
-          <button type="button" className="ghost-action" onClick={onShowProfiles}>
-            Profiles
-          </button>
-
-          <button type="button" className="account-pill">
-            {selectedProfile?.name || user.name} · {getAccountType()}
-          </button>
-
-          <button type="button" className="logout-btn" onClick={onLogout}>
-            Sign out
-          </button>
-        </div>
-      </header>
-
-      <main className="build-fast-grid">
+    <AppShell
+      kicker="Build Resume"
+      title="Generate resume from profile"
+      subtitle="Paste a job description and let FRT build a tailored resume from your profile."
+      user={user}
+      selectedProfile={selectedProfile}
+      onLogout={onLogout}
+      onShowProfiles={onShowProfiles}
+    >
+      <div className="build-fast-grid">
         <section className="fast-apply-card">
           <div className="fast-section-title">
             <div>
@@ -133,19 +117,21 @@ function BuildResumeDashboard({
               <h2>Application Details</h2>
             </div>
 
-            <button
-              type="button"
-              className="ghost-action compact"
+            <IconButton
+              icon="clear"
+              label="Clear fields"
+              variant="ghost"
+              size="sm"
               onClick={resetApplicationInputs}
               disabled={loading}
-            >
-              Clear
-            </button>
+            />
           </div>
 
           <div className="resume-input-row">
             <div className="resume-input-group">
-              <label htmlFor="roleName">Role</label>
+              <label htmlFor="roleName">
+                <Icon name="briefcase" size={13} /> Role
+              </label>
               <input
                 id="roleName"
                 className="resume-text-input"
@@ -156,7 +142,9 @@ function BuildResumeDashboard({
             </div>
 
             <div className="resume-input-group">
-              <label htmlFor="companyName">Company</label>
+              <label htmlFor="companyName">
+                <Icon name="building" size={13} /> Company
+              </label>
               <input
                 id="companyName"
                 className="resume-text-input"
@@ -179,23 +167,23 @@ function BuildResumeDashboard({
           </div>
 
           <div className="fast-actions-row">
-            <button
-              type="button"
-              className="generate-resume-btn"
+            <IconButton
+              icon="wand"
+              label="Build resume"
+              variant="primary"
+              size="lg"
+              loading={loading}
+              disabled={loading}
               onClick={handleBuildResume}
-              disabled={loading}
-            >
-              {loading ? "Building..." : "Build Resume"}
-            </button>
+            />
 
-            <button
-              type="button"
-              className="ghost-action"
-              onClick={onShowProfiles}
+            <IconButton
+              icon="users"
+              label="Change profile"
+              variant="ghost"
               disabled={loading}
-            >
-              Change Profile
-            </button>
+              onClick={onShowProfiles}
+            />
           </div>
         </section>
 
@@ -235,8 +223,8 @@ function BuildResumeDashboard({
             </div>
           )}
         </aside>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }
 

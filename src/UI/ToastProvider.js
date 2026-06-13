@@ -1,10 +1,11 @@
-import React, {
+  import React, {
     createContext,
     useContext,
     useEffect,
     useRef,
     useState,
   } from "react";
+  import Icon from "./Icon";
   
   const ToastContext = createContext(null);
   
@@ -117,11 +118,13 @@ import React, {
               role="status"
             >
               <div className="toast-icon">
-                {toast.type === "success"
-                  ? "✓"
-                  : toast.type === "error"
-                  ? "!"
-                  : "i"}
+                {toast.type === "success" ? (
+                  <Icon name="checkCircle" size={18} />
+                ) : toast.type === "error" ? (
+                  <Icon name="ban" size={18} />
+                ) : (
+                  <Icon name="info" size={18} />
+                )}
               </div>
   
               <div className="toast-content">
@@ -142,7 +145,7 @@ import React, {
                 onClick={() => removeToast(toast.id)}
                 aria-label="Close notification"
               >
-                ×
+                <Icon name="close" size={16} />
               </button>
             </div>
           ))}

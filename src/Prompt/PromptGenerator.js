@@ -1,4 +1,5 @@
-const API_URL = process.env.REACT_APP_API_URL || "";
+import IconButton from "../UI/IconButton";
+import { API_URL, getToken } from "../shared/api/client";
 
 function PromptGenerator({
   jobDescription = "",
@@ -6,8 +7,6 @@ function PromptGenerator({
   companyName = "",
   selectedProfile = null,
 }) {
-  const getToken = () => localStorage.getItem("rta_token");
-
   const parseJsonField = (value) => {
     if (!value) return [];
 
@@ -257,9 +256,12 @@ ${jobDescription}
         };
       
         return (
-          <button type="button" className="generate-btn" onClick={copyPrompt}>
-            Copy Prompt
-          </button>
+          <IconButton
+            icon="copy"
+            label="Copy prompt"
+            variant="primary"
+            onClick={copyPrompt}
+          />
         );
       }
       

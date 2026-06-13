@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-
-const API_URL = process.env.REACT_APP_API_URL || "";
+import Icon from "../UI/Icon";
+import { API_URL } from "../shared/api/client";
 
 function AuthPanel({ onLogin }) {
   const [mode, setMode] = useState("login");
@@ -58,7 +58,7 @@ function AuthPanel({ onLogin }) {
         ? `${API_URL}/api/auth/signup`
         : `${API_URL}/api/auth/login`;
 
-        const payload = isSignup
+      const payload = isSignup
         ? {
             name,
             email,
@@ -159,111 +159,109 @@ function AuthPanel({ onLogin }) {
     resetSecureForm();
   };
 
-  if (requiresPasscode) {
-    return (
-      <main className="auth-page">
-        <section className="auth-card">
-          <div className="auth-brand">
-            <h1>FRT</h1>
-            <p>Whatever you think, think bigger</p>
-          </div>
+  const authForm = requiresPasscode ? (
+    <form className="auth-form" onSubmit={handleSecureVerification}>
+      <h2>Secure Verification</h2>
+      <p className="auth-footer-text">
+        Enter your secure passcode to finish account setup.
+      </p>
 
-          <form className="auth-form" onSubmit={handleSecureVerification}>
-            <h2>Secure Verification</h2>
-            <p className="auth-footer-text">
-              Enter your secure passcode to finish account setup.
-            </p>
+      <label htmlFor="securePasscode">Secure Passcode</label>
+      <div className="auth-input-wrap">
+        <span className="auth-input-icon">
+          <Icon name="shield" size={16} />
+        </span>
+        <input
+          id="securePasscode"
+          className="auth-input"
+          type="password"
+          value={securePasscode}
+          onChange={(e) => setSecurePasscode(e.target.value)}
+          placeholder="Enter secure passcode"
+          autoComplete="off"
+        />
+      </div>
 
-            <label htmlFor="securePasscode">Secure Passcode</label>
-            <input
-              id="securePasscode"
-              className="auth-input"
-              type="password"
-              value={securePasscode}
-              onChange={(e) => setSecurePasscode(e.target.value)}
-              placeholder="Enter secure passcode"
-              autoComplete="off"
-            />
+      <button type="submit" className="auth-submit-btn" disabled={loading}>
+        {loading ? (
+          <>
+            <Icon name="loader" size={16} className="spin" /> Verifying...
+          </>
+        ) : (
+          <>
+            <Icon name="shield" size={16} /> Verify
+          </>
+        )}
+      </button>
 
-            <button type="submit" className="auth-submit-btn" disabled={loading}>
-              {loading ? "Verifying..." : "Verify"}
-            </button>
+      <button
+        type="button"
+        className="auth-submit-btn secondary"
+        disabled={loading}
+        onClick={() => {
+          resetSecureForm();
+          setMode("login");
+        }}
+      >
+        <Icon name="arrowLeft" size={16} /> Back to Login
+      </button>
+    </form>
+  ) : (
+    <>
+      <div className="auth-tabs">
+        <button
+          type="button"
+          className={mode === "login" ? "active" : ""}
+          onClick={() => {
+            setMode("login");
+            resetNormalForm();
+            resetSecureForm();
+          }}
+        >
+          <Icon name="login" size={16} /> Login
+        </button>
 
-            <button
-              type="button"
-              className="auth-submit-btn secondary"
-              disabled={loading}
-              onClick={() => {
-                resetSecureForm();
-                setMode("login");
-              }}
-            >
-              Back to Login
-            </button>
-          </form>
-        </section>
-      </main>
-    );
-  }
+        <button
+          type="button"
+          className={mode === "signup" ? "active" : ""}
+          onClick={() => {
+            setMode("signup");
+            resetNormalForm();
+            resetSecureForm();
+          }}
+        >
+          <Icon name="userPlus" size={16} /> Sign Up
+        </button>
+      </div>
 
-  return (
-    <main className="auth-page">
-      <section className="auth-card">
-        <div className="auth-brand">
-          <h1>FRT</h1>
-          <p>Whatever you think, think bigger</p>
-        </div>
+      <form className="auth-form" onSubmit={handleSubmit}>
+        {isSignup && (
+          <>
+            <label>Account Type</label>
 
-        <div className="auth-tabs">
-          <button
-            type="button"
-            className={mode === "login" ? "active" : ""}
-            onClick={() => {
-              setMode("login");
-              resetNormalForm();
-              resetSecureForm();
-            }}
-          >
-            Login
-          </button>
+            <div className="account-type-row">
+              <button
+                type="button"
+                className={accountType === "user" ? "selected" : ""}
+                onClick={() => setAccountType("user")}
+              >
+                <Icon name="user" size={16} /> User
+              </button>
 
-          <button
-            type="button"
-            className={mode === "signup" ? "active" : ""}
-            onClick={() => {
-              setMode("signup");
-              resetNormalForm();
-              resetSecureForm();
-            }}
-          >
-            Sign Up
-          </button>
-        </div>
+              <button
+                type="button"
+                className={accountType === "admin" ? "selected" : ""}
+                onClick={() => setAccountType("admin")}
+              >
+                <Icon name="shield" size={16} /> Admin
+              </button>
+            </div>
 
-        <form className="auth-form" onSubmit={handleSubmit}>
-          {isSignup && (
-            <>
-              <label>Account Type</label>
-
-              <div className="account-type-row">
-                <button
-                  type="button"
-                  className={accountType === "user" ? "selected" : ""}
-                  onClick={() => setAccountType("user")}
-                >
-                  User
-                </button>
-
-                <button
-                  type="button"
-                  className={accountType === "admin" ? "selected" : ""}
-                  onClick={() => setAccountType("admin")}
-                >
-                  Admin
-                </button>
-              </div>
-
-              <label htmlFor="name">Full Name</label>
+            <label htmlFor="name">Full Name</label>
+            <div className="auth-input-wrap">
+              <span className="auth-input-icon">
+                <Icon name="user" size={16} />
+              </span>
               <input
                 id="name"
                 className="auth-input"
@@ -271,10 +269,15 @@ function AuthPanel({ onLogin }) {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Enter your name"
               />
-            </>
-          )}
+            </div>
+          </>
+        )}
 
-          <label htmlFor="email">Email</label>
+        <label htmlFor="email">Email</label>
+        <div className="auth-input-wrap">
+          <span className="auth-input-icon">
+            <Icon name="mail" size={16} />
+          </span>
           <input
             id="email"
             className="auth-input"
@@ -283,8 +286,13 @@ function AuthPanel({ onLogin }) {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Enter your email"
           />
+        </div>
 
-          <label htmlFor="password">Password</label>
+        <label htmlFor="password">Password</label>
+        <div className="auth-input-wrap">
+          <span className="auth-input-icon">
+            <Icon name="shield" size={16} />
+          </span>
           <input
             id="password"
             className="auth-input"
@@ -293,22 +301,95 @@ function AuthPanel({ onLogin }) {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter your password"
           />
+        </div>
 
-          <button type="submit" className="auth-submit-btn" disabled={loading}>
-            {loading
-              ? "Please wait..."
-              : isSignup
-              ? "Create Account"
-              : "Login"}
-          </button>
-        </form>
+        <button type="submit" className="auth-submit-btn" disabled={loading}>
+          {loading ? (
+            <>
+              <Icon name="loader" size={16} className="spin" /> Please wait...
+            </>
+          ) : isSignup ? (
+            <>
+              <Icon name="userPlus" size={16} /> Create Account
+            </>
+          ) : (
+            <>
+              <Icon name="login" size={16} /> Login
+            </>
+          )}
+        </button>
+      </form>
 
-        <p className="auth-footer-text">
-          {isSignup ? "Already have an account?" : "Don't have an account?"}{" "}
-          <button type="button" onClick={switchMode}>
-            {isSignup ? "Login" : "Sign up"}
-          </button>
-        </p>
+      <p className="auth-footer-text">
+        {isSignup ? "Already have an account?" : "Don't have an account?"}{" "}
+        <button type="button" onClick={switchMode}>
+          {isSignup ? "Login" : "Sign up"}
+        </button>
+      </p>
+    </>
+  );
+
+  return (
+    <main className="auth-page">
+      <section className="auth-hero">
+        <div className="auth-hero-content">
+          <div className="auth-hero-badge">
+            <Icon name="zap" size={14} />
+            Fast Resume Tailor
+          </div>
+
+          <h1>Apply smarter. Land faster.</h1>
+          <p>
+            Tailor resumes to every job description, track applications per
+            profile, and move through your pipeline with precision.
+          </p>
+
+          <div className="auth-hero-features">
+            <div className="auth-hero-feature">
+              <div className="auth-hero-feature-icon">
+                <Icon name="wand" size={18} />
+              </div>
+              <div>
+                <strong>AI-ready prompts</strong>
+                <span>Generate tailored resume prompts from any job description.</span>
+              </div>
+            </div>
+
+            <div className="auth-hero-feature">
+              <div className="auth-hero-feature-icon">
+                <Icon name="fileText" size={18} />
+              </div>
+              <div>
+                <strong>Template-driven resumes</strong>
+                <span>Fill admin DOCX templates and export polished PDFs instantly.</span>
+              </div>
+            </div>
+
+            <div className="auth-hero-feature">
+              <div className="auth-hero-feature-icon">
+                <Icon name="briefcase" size={18} />
+              </div>
+              <div>
+                <strong>Application tracking</strong>
+                <span>Monitor every apply by profile, company, and role.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="auth-panel">
+        <div className="auth-card">
+          <div className="auth-brand">
+            <div className="auth-brand-mark">
+              <Icon name="zap" size={26} strokeWidth={2.5} />
+            </div>
+            <h1>FRT</h1>
+            <p>Whatever you think, think bigger</p>
+          </div>
+
+          {authForm}
+        </div>
       </section>
     </main>
   );

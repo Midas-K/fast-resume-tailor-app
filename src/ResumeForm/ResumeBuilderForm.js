@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from "react";
+import Icon from "../UI/Icon";
+import IconButton from "../UI/IconButton";
+import { API_URL, getToken } from "../shared/api/client";
+import { parseJsonField } from "../shared/utils/format";
 import {
   canUseFolderPicker,
   pickCustomerRootFolder,
   saveResumeToCustomerFolder,
 } from "../services/fileSystemSaveService";
-
-const API_URL = process.env.REACT_APP_API_URL || "";
 
 function ResumeBuilderForm({ appliedRole, appliedCompany, selectedProfile }) {
   const [summary, setSummary] = useState("");
@@ -13,22 +15,6 @@ function ResumeBuilderForm({ appliedRole, appliedCompany, selectedProfile }) {
   const [certification, setCertification] = useState("");
   const [experienceInputs, setExperienceInputs] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  const getToken = () => localStorage.getItem("rta_token");
-
-  const parseJsonField = (value) => {
-    if (!value) return [];
-
-    if (Array.isArray(value)) {
-      return value;
-    }
-
-    try {
-      return JSON.parse(value);
-    } catch (error) {
-      return [];
-    }
-  };
 
   const selectedEducation = parseJsonField(selectedProfile?.education);
   const selectedExperience = parseJsonField(selectedProfile?.experience);
@@ -242,7 +228,9 @@ function ResumeBuilderForm({ appliedRole, appliedCompany, selectedProfile }) {
   return (
     <section className="card resume-form-card">
       <div className="resume-form-header">
-        <div className="form-icon">✦</div>
+        <div className="form-icon">
+          <Icon name="fileText" size={20} />
+        </div>
 
         <div>
           <h2>Resume Builder</h2>
@@ -391,14 +379,15 @@ Natural Language Processing: Text classification, NER, summarization`}
       </div>
 
       <div className="profile-actions">
-        <button
-          type="button"
-          className="generate-resume-btn"
-          onClick={generateResumePdf}
+        <IconButton
+          icon="fileDown"
+          label={loading ? "Generating resume..." : "Save PDF resume"}
+          variant="primary"
+          size="lg"
+          loading={loading}
           disabled={loading}
-        >
-          {loading ? "Generating..." : "Save PDF Resume"}
-        </button>
+          onClick={generateResumePdf}
+        />
       </div>
     </section>
   );

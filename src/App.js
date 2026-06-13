@@ -2,6 +2,9 @@ import React, { useState } from "react";
 import "./App.css";
 
 import { ToastProvider } from "./UI/ToastProvider";
+import AppShell from "./UI/AppShell";
+import Icon from "./UI/Icon";
+import IconButton from "./UI/IconButton";
 
 import AuthPanel from "./Auth/AuthPanel";
 import AdminDashboard from "./Admin/AdminDashboard";
@@ -118,34 +121,20 @@ function App() {
     );
   }
 
+  const profileReady = Boolean(selectedProfile);
+  const jdReady = Boolean(description.trim());
+
   return (
-    <div className="fast-page">
-      <header className="fast-topbar">
-        <div>
-          <span className="fast-kicker">FRT Fast Apply</span>
-          <h1>Apply faster</h1>
-        </div>
-
-        <div className="fast-topbar-actions">
-          <button
-            type="button"
-            className="ghost-action"
-            onClick={() => setShowProfiles(true)}
-          >
-            Profiles
-          </button>
-
-          <button type="button" className="account-pill">
-            {selectedProfile?.name || currentUser.name}
-          </button>
-
-          <button type="button" className="logout-btn" onClick={handleLogout}>
-            Sign out
-          </button>
-        </div>
-      </header>
-
-      <main className="fast-one-screen">
+    <AppShell
+      kicker="Fast Apply"
+      title="Apply faster"
+      subtitle="Paste the job description, copy your AI prompt, and generate a tailored resume in one workspace."
+      user={currentUser}
+      selectedProfile={selectedProfile}
+      onLogout={handleLogout}
+      onShowProfiles={() => setShowProfiles(true)}
+    >
+      <div className="fast-apply-workspace">
         <section className="fast-apply-card">
           <div className="fast-section-title">
             <div>
@@ -153,18 +142,20 @@ function App() {
               <h2>Application Details</h2>
             </div>
 
-            <button
-              type="button"
-              className="ghost-action compact"
+            <IconButton
+              icon="clear"
+              label="Clear fields"
+              variant="ghost"
+              size="sm"
               onClick={clearApplicationInputs}
-            >
-              Clear
-            </button>
+            />
           </div>
 
           <div className="resume-input-row">
             <div className="resume-input-group">
-              <label htmlFor="roleName">Role</label>
+              <label htmlFor="roleName">
+                <Icon name="briefcase" size={13} /> Role
+              </label>
               <input
                 id="roleName"
                 className="resume-text-input"
@@ -175,7 +166,9 @@ function App() {
             </div>
 
             <div className="resume-input-group">
-              <label htmlFor="companyName">Company</label>
+              <label htmlFor="companyName">
+                <Icon name="building" size={13} /> Company
+              </label>
               <input
                 id="companyName"
                 className="resume-text-input"
@@ -208,13 +201,13 @@ function App() {
               <p>{selectedProfile?.email || "Choose a profile first."}</p>
             </div>
 
-            <button
-              type="button"
-              className="ghost-action compact"
+            <IconButton
+              icon="users"
+              label="Change profile"
+              variant="ghost"
+              size="sm"
               onClick={() => setShowProfiles(true)}
-            >
-              Change
-            </button>
+            />
           </div>
 
           <div className="fast-actions-row">
@@ -226,11 +219,13 @@ function App() {
             />
 
             <div className="fast-readiness">
-              <span className={selectedProfile ? "ready" : "missing"}>
-                {selectedProfile ? "Profile ready" : "Profile missing"}
+              <span className={`readiness-chip ${profileReady ? "ready" : "missing"}`}>
+                <Icon name={profileReady ? "checkCircle" : "info"} size={13} />
+                {profileReady ? "Profile ready" : "Profile missing"}
               </span>
-              <span className={description.trim() ? "ready" : "missing"}>
-                {description.trim() ? "JD ready" : "JD missing"}
+              <span className={`readiness-chip ${jdReady ? "ready" : "missing"}`}>
+                <Icon name={jdReady ? "checkCircle" : "info"} size={13} />
+                {jdReady ? "JD ready" : "JD missing"}
               </span>
             </div>
           </div>
@@ -243,8 +238,8 @@ function App() {
             selectedProfile={selectedProfile}
           />
         </section>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }
 
