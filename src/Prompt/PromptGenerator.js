@@ -1,5 +1,6 @@
 import IconButton from "../UI/IconButton";
-import { API_URL, getToken } from "../shared/api/client";
+import { API_URL, authHeaders } from "../shared/api/client";
+import { cachedJsonGet } from "../shared/api/cache";
 
 function PromptGenerator({
   jobDescription = "",
@@ -60,27 +61,17 @@ function PromptGenerator({
    };
 
   const getLatestSelectedProfile = async () => {
-    const token = getToken();
-
-    if (!token) {
-      throw new Error("Please login again.");
+    if (!selectedProfile?.id) {
+      throw new Error("Please select a profile first.");
     }
 
-    const response = await fetch(`${API_URL}/api/profiles`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.message || "Could not refresh selected profile.");
-    }
-
-    const latestProfile = (result.profiles || []).find(
-      (profile) => String(profile.id) === String(selectedProfile?.id)
+    const result = await cachedJsonGet(
+      `${API_URL}/api/profiles/${selectedProfile.id}`,
+      { headers: authHeaders() },
+      15_000
     );
+
+    const latestProfile = result.profile;
 
     if (!latestProfile) {
       throw new Error("Selected profile was not found. Please select profile again.");

@@ -9,12 +9,26 @@ import {
   saveResumeToCustomerFolder,
 } from "../services/fileSystemSaveService";
 
-function ResumeBuilderForm({ appliedRole, appliedCompany, selectedProfile }) {
+function ResumeBuilderForm({
+  appliedRole,
+  appliedCompany,
+  selectedProfile,
+  compact = false,
+}) {
   const [summary, setSummary] = useState("");
   const [skills, setSkills] = useState("");
   const [certification, setCertification] = useState("");
   const [experienceInputs, setExperienceInputs] = useState([]);
+  const [activeExperienceIndex, setActiveExperienceIndex] = useState(0);
+  const [activeSection, setActiveSection] = useState("summary");
   const [loading, setLoading] = useState(false);
+
+  const resumeSections = [
+    { id: "summary", label: "Summary" },
+    { id: "skills", label: "Skills" },
+    { id: "experience", label: "Experience" },
+    { id: "cert", label: "Certifications" },
+  ];
 
   const selectedEducation = parseJsonField(selectedProfile?.education);
   const selectedExperience = parseJsonField(selectedProfile?.experience);
@@ -37,6 +51,8 @@ function ResumeBuilderForm({ appliedRole, appliedCompany, selectedProfile }) {
     }));
 
     setExperienceInputs(mappedExperience);
+    setActiveExperienceIndex(0);
+    setActiveSection("summary");
   }, [selectedProfile]);
 
   const updateExperienceDetails = (index, value) => {
@@ -226,22 +242,39 @@ function ResumeBuilderForm({ appliedRole, appliedCompany, selectedProfile }) {
   };
 
   return (
-    <section className="card resume-form-card">
-      <div className="resume-form-header">
+    <section
+      className={`card resume-form-card${compact ? " resume-form-compact" : ""}`}
+    >
+      <div
+        className={`resume-form-header${
+          compact ? " resume-form-header--compact" : ""
+        }`}
+      >
         <div className="form-icon">
           <Icon name="fileText" size={20} />
         </div>
 
         <div>
           <h2>Resume Builder</h2>
-          <p>
-            The assigned admin DOCX template is filled, converted to PDF, and
-            saved to your selected customer folder.
-          </p>
+          {!compact && (
+            <p>
+              The assigned admin DOCX template is filled, converted to PDF, and
+              saved to your selected customer folder.
+            </p>
+          )}
         </div>
       </div>
 
-      {selectedProfile && (
+      {selectedProfile && compact && (
+        <div className="resume-meta-strip">
+          <strong>{selectedProfile.name}</strong>
+          <span>
+            {selectedProfile.resume_template_name || "Default template"}
+          </span>
+        </div>
+      )}
+
+      {selectedProfile && !compact && (
         <div className="selected-profile-box">
           <div className="selected-profile-header">
             <div>
@@ -308,6 +341,143 @@ function ResumeBuilderForm({ appliedRole, appliedCompany, selectedProfile }) {
         </div>
       )}
 
+      <div className={compact ? "resume-form-body" : undefined}>
+        {compact ? (
+          <>
+            <div className="resume-section-tabs">
+              {resumeSections.map((section) => (
+                <button
+                  key={section.id}
+                  type="button"
+                  className={activeSection === section.id ? "active" : ""}
+                  onClick={() => setActiveSection(section.id)}
+                >
+                  {section.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="resume-paste-pane">
+              {activeSection === "summary" && (
+                <div className="resume-input-group">
+                  <label htmlFor="summary">Summary *</label>
+                  <textarea
+                    id="summary"
+                    value={summary}
+                    onChange={(e) => setSummary(e.target.value)}
+                    placeholder="Paste summary here..."
+                  />
+                </div>
+              )}
+
+              {activeSection === "skills" && (
+                <div className="resume-input-group">
+                  <label htmlFor="skills">Skills *</label>
+                  <textarea
+                    id="skills"
+                    value={skills}
+                    onChange={(e) => setSkills(e.target.value)}
+                    placeholder="Paste categorized skills here..."
+                  />
+                </div>
+              )}
+
+              {activeSection === "experience" && (
+                <div className="experience-area experience-area-compact">
+                  {experienceInputs.length === 0 && (
+                    <div className="empty-profile-box">
+                      No company experience found in selected profile.
+                    </div>
+                  )}
+
+                  {experienceInputs.length > 0 && (
+                    <>
+                      {experienceInputs.length > 1 && (
+                        <div className="experience-tabs-compact">
+                          {experienceInputs.map((experience, index) => (
+                            <button
+                              key={experience.id}
+                              type="button"
+                              className={
+                                index === activeExperienceIndex ? "active" : ""
+                              }
+                              onClick={() => setActiveExperienceIndex(index)}
+                            >
+                              {experience.companyName || `Company ${index + 1}`}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {(() => {
+                        const experience =
+                          experienceInputs[activeExperienceIndex] ||
+                          experienceInputs[0];
+
+                        if (!experience) return null;
+
+                        return (
+                          <div className="experience-box experience-box-compact">
+                            <div className="experience-box-header">
+                              <label>
+                                {experience.companyName || "Company Name"} -{" "}
+                                {experience.title || "Title"} *
+                              </label>
+                            </div>
+
+                            <p className="profile-experience-timeline">
+                              {[experience.location, experience.timeline]
+                                .filter((value) => value && String(value).trim())
+                                .join(" | ") || "Timeline"}
+                            </p>
+
+                            <textarea
+                              value={experience.details}
+                              onChange={(e) =>
+                                updateExperienceDetails(
+                                  activeExperienceIndex,
+                                  e.target.value
+                                )
+                              }
+                              placeholder={`Paste experience bullets for ${
+                                experience.companyName || "this company"
+                              }.`}
+                            />
+                          </div>
+                        );
+                      })()}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {activeSection === "cert" && (
+                <div className="resume-input-group">
+                  <label htmlFor="certification">Certifications *</label>
+                  <textarea
+                    id="certification"
+                    value={certification}
+                    onChange={(e) => setCertification(e.target.value)}
+                    placeholder="AWS Certified Machine Learning - Specialty"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="resume-form-footer resume-form-footer--solo">
+              <IconButton
+                icon="fileDown"
+                label={loading ? "Generating resume..." : "Save PDF resume"}
+                variant="primary"
+                size="lg"
+                loading={loading}
+                disabled={loading}
+                onClick={generateResumePdf}
+              />
+            </div>
+          </>
+        ) : (
+          <>
       <div className="resume-input-group">
         <label htmlFor="summary">Summary *</label>
         <textarea
@@ -388,6 +558,9 @@ Natural Language Processing: Text classification, NER, summarization`}
           disabled={loading}
           onClick={generateResumePdf}
         />
+      </div>
+          </>
+        )}
       </div>
     </section>
   );

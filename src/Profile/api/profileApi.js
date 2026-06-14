@@ -1,40 +1,42 @@
-import { API_URL, getToken } from "../../shared/api/client";
+import { API_URL, authHeaders, getToken } from "../../shared/api/client";
+import { cachedJsonGet, invalidateCache } from "../../shared/api/cache";
+
+const profilesPrefix = `GET:${API_URL}/api/profiles`;
 
 export async function fetchProfiles() {
-  const response = await fetch(`${API_URL}/api/profiles`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
+  const result = await cachedJsonGet(`${API_URL}/api/profiles`, {
+    headers: authHeaders(),
   });
-  const result = await response.json();
-
-  if (!response.ok) {
-    throw new Error(result.message || "Could not load profiles.");
-  }
 
   return result.profiles || [];
 }
 
-export async function fetchProfileApplicationCounts() {
-  const response = await fetch(`${API_URL}/api/applications/profile-counts`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  const result = await response.json();
+export async function fetchProfileById(profileId) {
+  const result = await cachedJsonGet(
+    `${API_URL}/api/profiles/${profileId}`,
+    { headers: authHeaders() },
+    15_000
+  );
 
-  if (!response.ok) {
-    throw new Error(result.message || "Could not load application counts.");
-  }
+  return result.profile;
+}
+
+export async function fetchProfileApplicationCounts() {
+  const result = await cachedJsonGet(
+    `${API_URL}/api/applications/profile-counts`,
+    { headers: authHeaders() },
+    15_000
+  );
 
   return result.counts || [];
 }
 
 export async function fetchProfileApplications(profileId) {
-  const response = await fetch(`${API_URL}/api/applications/profile/${profileId}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  const result = await response.json();
-
-  if (!response.ok) {
-    throw new Error(result.message || "Could not load applications.");
-  }
+  const result = await cachedJsonGet(
+    `${API_URL}/api/applications/profile/${profileId}`,
+    { headers: authHeaders() },
+    15_000
+  );
 
   return result.applications || [];
 }
@@ -65,19 +67,25 @@ export async function saveProfile({ editingProfileId, payload }) {
     );
   }
 
+  invalidateCache(profilesPrefix);
+  invalidateCache(`GET:${API_URL}/api/applications/profile-counts`);
+
   return result;
 }
 
 export async function deleteProfile(profileId) {
   const response = await fetch(`${API_URL}/api/profiles/${profileId}`, {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${getToken()}` },
+    headers: authHeaders(),
   });
   const result = await response.json();
 
   if (!response.ok) {
     throw new Error(result.message || "Could not remove profile.");
   }
+
+  invalidateCache(profilesPrefix);
+  invalidateCache(`GET:${API_URL}/api/applications/profile-counts`);
 
   return result;
 }

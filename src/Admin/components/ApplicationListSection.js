@@ -1,5 +1,5 @@
-import IconButton from "../../UI/IconButton";
 import { formatDateTime } from "../../shared/utils/format";
+import { ApplicationListDeleteToolbar } from "./AdminActionButtons";
 
 function ApplicationListSection({
   profileApplications,
@@ -20,78 +20,17 @@ function ApplicationListSection({
           <h2>Applications for {profile.profile_name}</h2>
           <p>{selectedApplicationDate} application list.</p>
         </div>
-
-        <div className="profile-admin-actions compact-actions">
-          <IconButton
-            icon="trash"
-            label="Delete this day"
-            variant="danger"
-            size="sm"
-            onClick={() => {
-              const selectedIsoDate =
-                getIsoDateFromFormattedDate(selectedApplicationDate);
-
-              onDeleteApplications({
-                profile,
-                deleteType: "day",
-                date: selectedIsoDate,
-              });
-            }}
-          />
-
-          <IconButton
-            icon="trash"
-            label="Delete this month"
-            variant="danger"
-            size="sm"
-            onClick={() => {
-              const selectedIsoDate =
-                getIsoDateFromFormattedDate(selectedApplicationDate);
-
-              onDeleteApplications({
-                profile,
-                deleteType: "month",
-                month: getMonthFromDate(selectedIsoDate),
-              });
-            }}
-          />
-
-          <IconButton
-            icon="trash"
-            label="Delete this year"
-            variant="danger"
-            size="sm"
-            onClick={() => {
-              const selectedIsoDate =
-                getIsoDateFromFormattedDate(selectedApplicationDate);
-
-              onDeleteApplications({
-                profile,
-                deleteType: "year",
-                year: getYearFromDate(selectedIsoDate),
-              });
-            }}
-          />
-
-          <IconButton
-            icon="trash"
-            label="Delete all applications"
-            variant="danger"
-            size="sm"
-            onClick={() =>
-              onDeleteApplications({ profile, deleteType: "all" })
-            }
-          />
-
-          <IconButton
-            icon="arrowLeft"
-            label="Back to dates"
-            variant="ghost"
-            size="sm"
-            onClick={onBackToDates}
-          />
-        </div>
       </div>
+
+      <ApplicationListDeleteToolbar
+        profile={profile}
+        selectedApplicationDate={selectedApplicationDate}
+        onDeleteApplications={onDeleteApplications}
+        onBackToDates={onBackToDates}
+        getIsoDateFromFormattedDate={getIsoDateFromFormattedDate}
+        getMonthFromDate={getMonthFromDate}
+        getYearFromDate={getYearFromDate}
+      />
 
       {selectedDateApplications.length === 0 ? (
         <div className="empty-user-profiles">

@@ -9,12 +9,13 @@ function AppShell({
   selectedProfile,
   onLogout,
   onShowProfiles,
+  compact = false,
   children,
 }) {
   const displayName = selectedProfile?.name || user?.name || "User";
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${compact ? " app-shell--fit" : ""}`}>
       <aside className="app-sidebar">
         <div className="brand-block">
           <div className="brand-mark">
@@ -56,12 +57,16 @@ function AppShell({
         </div>
       </aside>
 
-      <main className="app-main">
-        <header className="workspace-header">
-          <div>
+      <main className={`app-main${compact ? " app-main--fit" : ""}`}>
+        <header
+          className={`workspace-header${
+            compact ? " workspace-header--fit" : ""
+          }`}
+        >
+          <div className="workspace-header-copy">
             <span className="eyebrow">{kicker}</span>
             <h1>{title}</h1>
-            {subtitle && <p>{subtitle}</p>}
+            {subtitle && !compact && <p>{subtitle}</p>}
           </div>
 
           <div className="workspace-actions">

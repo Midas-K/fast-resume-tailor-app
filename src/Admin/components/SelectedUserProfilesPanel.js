@@ -1,17 +1,22 @@
 import IconButton from "../../UI/IconButton";
+import LabeledIconButton from "../../UI/LabeledIconButton";
 import {
-  ProfileEducationDetails,
-  ProfileExperienceDetails,
-} from "./ProfileDetailViews";
+  ApplicationCountBadges,
+  ApplicationDeleteGroup,
+  PromptActionGroup,
+} from "./AdminActionButtons";
+import { ProfileCareerSnapshot, ProfileContactStrip } from "./ProfileDetailViews";
 
 function SelectedUserProfilesPanel({
   selectedUser,
   profiles,
   fileInputRefs,
-  getProfileRows,
+  getWholeCount,
+  getRecentCount,
+  getLatestApplicationDate,
   onClose,
   onViewApplications,
-  onDeleteAllApplications,
+  onDeleteApplications,
   onViewPrompt,
   onTriggerPromptUpload,
   onPromptFileUpload,
@@ -33,111 +38,51 @@ function SelectedUserProfilesPanel({
       {profiles.length === 0 ? (
         <div className="empty-user-profiles">This user has no profiles yet.</div>
       ) : (
-        <div className="selected-profile-grid-admin">
+        <div className="admin-profile-board-grid compact">
           {profiles.map((profile) => (
-            <div className="selected-profile-admin-card" key={profile.id}>
-              <div className="selected-profile-admin-top">
-                <h4>{profile.profile_name}</h4>
-
-                <span
-                  className={
-                    profile.admin_prompt && profile.admin_prompt.trim()
-                      ? "status-badge approved"
-                      : "status-badge pending"
-                  }
-                >
-                  {profile.admin_prompt && profile.admin_prompt.trim()
-                    ? "Prompt Uploaded"
-                    : "Sample Prompt"}
-                </span>
-              </div>
-
-              <div className="profile-admin-info">
-                <p>
-                  <strong>Email:</strong> {profile.profile_email || "-"}
-                </p>
-                <p>
-                  <strong>Phone:</strong> {profile.phone || "-"}
-                </p>
-                <p>
-                  <strong>Location:</strong> {profile.location || "-"}
-                </p>
-                <p>
-                  <strong>Template:</strong>{" "}
-                  {profile.resume_template_name || "Default template"}
-                </p>
-                <p>
-                  <strong>Created:</strong>{" "}
-                  {new Date(profile.created_at).toLocaleString()}
-                </p>
-              </div>
-
-              <div className="profile-full-details">
+            <article className="admin-profile-board-card" key={profile.id}>
+              <header className="admin-profile-board-card__head">
                 <div>
-                  <h5>Education</h5>
-                  <ProfileEducationDetails profile={profile} />
+                  <h3>{profile.profile_name}</h3>
                 </div>
+                <ApplicationCountBadges
+                  wholeCount={getWholeCount(profile)}
+                  recentCount={getRecentCount(profile)}
+                />
+              </header>
 
-                <div>
-                  <h5>Experience</h5>
-                  <ProfileExperienceDetails profile={profile} />
-                </div>
+              <ProfileContactStrip profile={profile} />
+              <ProfileCareerSnapshot profile={profile} />
+
+              <div className="admin-profile-board-card__section">
+                <PromptActionGroup
+                  profile={profile}
+                  layout="stack"
+                  inputRef={(element) => {
+                    fileInputRefs.current[profile.id] = element;
+                  }}
+                  onViewPrompt={onViewPrompt}
+                  onTriggerPromptUpload={onTriggerPromptUpload}
+                  onPromptFileUpload={onPromptFileUpload}
+                  onRemovePrompt={onRemovePrompt}
+                />
               </div>
 
-              <div className="profile-admin-actions">
-                <IconButton
-                  icon="eye"
-                  label={`View applications (${getProfileRows(profile).length})`}
-                  variant="ghost"
+              <footer className="admin-profile-board-card__footer">
+                <LabeledIconButton
+                  icon="clipboardList"
+                  label={`View applications (${getWholeCount(profile)})`}
+                  variant="primary"
                   size="sm"
                   onClick={() => onViewApplications(profile)}
                 />
-
-                <IconButton
-                  icon="trash"
-                  label="Delete all applications"
-                  variant="danger"
-                  size="sm"
-                  onClick={() => onDeleteAllApplications(profile)}
+                <ApplicationDeleteGroup
+                  profile={profile}
+                  onDeleteApplications={onDeleteApplications}
+                  getLatestApplicationDate={getLatestApplicationDate}
                 />
-
-                <IconButton
-                  icon="eye"
-                  label="View prompt"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onViewPrompt(profile)}
-                />
-
-                <IconButton
-                  icon="upload"
-                  label="Update prompt"
-                  variant="primary"
-                  size="sm"
-                  onClick={() => onTriggerPromptUpload(profile.id)}
-                />
-
-                <IconButton
-                  icon="trash"
-                  label="Remove prompt"
-                  variant="danger"
-                  size="sm"
-                  onClick={() => onRemovePrompt(profile.id)}
-                />
-
-                <input
-                  type="file"
-                  accept=".txt,text/plain"
-                  style={{ display: "none" }}
-                  ref={(element) => {
-                    fileInputRefs.current[profile.id] = element;
-                  }}
-                  onChange={(e) =>
-                    onPromptFileUpload(profile.id, e.target.files?.[0])
-                  }
-                />
-              </div>
-            </div>
+              </footer>
+            </article>
           ))}
         </div>
       )}

@@ -4,6 +4,22 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body:has(.app-shell--fit) {
+  overflow: hidden;
+  height: 100%;
+}
+
+#root:has(.app-shell--fit) {
+  height: 100%;
+  overflow: hidden;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

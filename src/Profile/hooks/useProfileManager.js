@@ -4,6 +4,7 @@ import {
   deleteProfile,
   fetchProfileApplicationCounts,
   fetchProfileApplications,
+  fetchProfileById,
   fetchProfiles,
   saveProfile as saveProfileApi,
 } from "../api/profileApi";
@@ -251,37 +252,47 @@ export function useProfileManager(user) {
     setExperience([{ ...EMPTY_EXPERIENCE }]);
   };
 
-  const startEditProfile = (profile) => {
-    setEditingProfileId(profile.id);
-    setName(profile.name || "");
-    setLocation(profile.location || "");
-    setPhone(profile.phone || "");
-    setEmail(profile.email || "");
+  const startEditProfile = async (profile) => {
+    try {
+      const fullProfile = await fetchProfileById(profile.id);
 
-    const parsedEducation = parseJsonField(profile.education);
-    const parsedExperience = parseJsonField(profile.experience);
+      setEditingProfileId(fullProfile.id);
+      setName(fullProfile.name || "");
+      setLocation(fullProfile.location || "");
+      setPhone(fullProfile.phone || "");
+      setEmail(fullProfile.email || "");
 
-    setEducation(
-      parsedEducation.length > 0
-        ? parsedEducation.map((item) => ({
-            school: item.school || "",
-            degree: item.degree || "",
-            timeline: item.timeline || "",
-          }))
-        : [{ ...EMPTY_EDUCATION }]
-    );
+      const parsedEducation = parseJsonField(fullProfile.education);
+      const parsedExperience = parseJsonField(fullProfile.experience);
 
-    setExperience(
-      parsedExperience.length > 0
-        ? parsedExperience.map((item) => ({
-            companyName: item.companyName || "",
-            title: item.title || "",
-            timeline: item.timeline || "",
-          }))
-        : [{ ...EMPTY_EXPERIENCE }]
-    );
+      setEducation(
+        parsedEducation.length > 0
+          ? parsedEducation.map((item) => ({
+              school: item.school || "",
+              degree: item.degree || "",
+              timeline: item.timeline || "",
+            }))
+          : [{ ...EMPTY_EDUCATION }]
+      );
 
-    window.scrollTo({ top: 0, behavior: "smooth" });
+      setExperience(
+        parsedExperience.length > 0
+          ? parsedExperience.map((item) => ({
+              companyName: item.companyName || "",
+              title: item.title || "",
+              timeline: item.timeline || "",
+            }))
+          : [{ ...EMPTY_EXPERIENCE }]
+      );
+
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  const selectProfileForUse = async (profile) => {
+    return fetchProfileById(profile.id);
   };
 
   const handleSaveProfile = async () => {
@@ -383,6 +394,7 @@ export function useProfileManager(user) {
     updateExperience,
     resetForm,
     startEditProfile,
+    selectProfileForUse,
     handleSaveProfile,
     handleRemoveProfile,
   };

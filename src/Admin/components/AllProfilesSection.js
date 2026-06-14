@@ -1,7 +1,12 @@
-import IconButton from "../../UI/IconButton";
+import Icon from "../../UI/Icon";
 import {
-  ProfileEducationDetails,
-  ProfileExperienceDetails,
+  ApplicationCountBadges,
+  ApplicationDeleteGroup,
+  PromptActionGroup,
+} from "./AdminActionButtons";
+import {
+  ProfileCareerSnapshot,
+  ProfileContactStrip,
 } from "./ProfileDetailViews";
 
 function AllProfilesSection({
@@ -10,7 +15,7 @@ function AllProfilesSection({
   fileInputRefs,
   getWholeCount,
   getRecentCount,
-  getProfileRows,
+  getLatestApplicationDate,
   onUpdateResumeTemplate,
   onViewPrompt,
   onTriggerPromptUpload,
@@ -19,201 +24,101 @@ function AllProfilesSection({
   onDeleteApplications,
 }) {
   return (
-    <section className="admin-content-card">
+    <section className="admin-content-card admin-profiles-board">
       <div className="admin-section-header">
         <div>
           <h2>User Profiles</h2>
           <p>
-            View full profile details, update prompts, and assign DOCX resume
-            templates.
+            Review career snapshots, manage prompts, assign templates, and control
+            application counts with clearly labeled actions.
           </p>
         </div>
+        <span className="admin-section-kicker">{profiles.length} profiles</span>
       </div>
 
-      <div className="admin-table-wrap modern">
-        <table className="admin-table modern">
-          <thead>
-            <tr>
-              <th>User Name</th>
-              <th>Profile Name</th>
-              <th>Profile Location</th>
-              <th>Profile Phone</th>
-              <th>Profile Email</th>
-              <th>Education Details</th>
-              <th>Experience Details</th>
-              <th>Prompt</th>
-              <th>Resume Template</th>
-              <th>Whole Application Count</th>
-              <th>Most Recent Date Count</th>
-              <th>Delete Application Counts</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {profiles.map((profile) => (
-              <tr key={profile.id}>
-                <td>{profile.user_name || "-"}</td>
-                <td>{profile.profile_name || "-"}</td>
-                <td>{profile.location || "-"}</td>
-                <td>{profile.phone || "-"}</td>
-                <td>{profile.profile_email || "-"}</td>
-                <td>
-                  <ProfileEducationDetails profile={profile} />
-                </td>
-                <td>
-                  <ProfileExperienceDetails profile={profile} />
-                </td>
-
-                <td>
-                  <div className="prompt-inline-panel">
-                    <div className="prompt-inline-status-row">
-                      <span
-                        className={
-                          profile.admin_prompt && profile.admin_prompt.trim()
-                            ? "prompt-pill uploaded"
-                            : "prompt-pill sample"
-                        }
-                      >
-                        {profile.admin_prompt && profile.admin_prompt.trim()
-                          ? "Uploaded Prompt"
-                          : "Sample Prompt"}
-                      </span>
-                    </div>
-
-                    <div className="prompt-inline-actions">
-                      <IconButton
-                        icon="eye"
-                        label="View prompt"
-                        variant="ghost"
-                        size="sm"
-                        className="prompt-action-btn view"
-                        onClick={() => onViewPrompt(profile)}
-                      />
-
-                      <IconButton
-                        icon="upload"
-                        label="Update prompt"
-                        variant="ghost"
-                        size="sm"
-                        className="prompt-action-btn update"
-                        onClick={() => onTriggerPromptUpload(profile.id)}
-                      />
-
-                      <IconButton
-                        icon="trash"
-                        label="Remove prompt"
-                        variant="danger"
-                        size="sm"
-                        className="prompt-action-btn remove"
-                        onClick={() => onRemovePrompt(profile.id)}
-                      />
-                    </div>
-
-                    <input
-                      type="file"
-                      accept=".txt,text/plain"
-                      style={{ display: "none" }}
-                      ref={(element) => {
-                        fileInputRefs.current[profile.id] = element;
-                      }}
-                      onChange={(e) =>
-                        onPromptFileUpload(profile.id, e.target.files?.[0])
-                      }
-                    />
-                  </div>
-                </td>
-
-                <td>
-                  <div className="template-profile-picker">
-                    <select
-                      className="admin-select"
-                      value={profile.resume_template_id || ""}
-                      onChange={(e) =>
-                        onUpdateResumeTemplate(
-                          profile.id,
-                          e.target.value || null
-                        )
-                      }
-                    >
-                      <option value="">Use Default Template</option>
-
-                      {resumeTemplates.map((template) => (
-                        <option key={template.id} value={template.id}>
-                          {template.name}
-                          {template.is_default ? " (Default)" : ""}
-                        </option>
-                      ))}
-                    </select>
-
-                    <p>
-                      Current: {profile.resume_template_name || "Default template"}
-                    </p>
-                  </div>
-                </td>
-
-                <td>
-                  <span className="status-badge approved">
-                    {getWholeCount(profile)}
+      {profiles.length === 0 ? (
+        <div className="empty-user-profiles">No profiles found.</div>
+      ) : (
+        <div className="admin-profile-board-grid">
+          {profiles.map((profile) => (
+            <article className="admin-profile-board-card" key={profile.id}>
+              <header className="admin-profile-board-card__head">
+                <div>
+                  <span className="admin-profile-board-card__user">
+                    {profile.user_name || "User"}
                   </span>
-                </td>
+                  <h3>{profile.profile_name || "Profile"}</h3>
+                </div>
+                <ApplicationCountBadges
+                  wholeCount={getWholeCount(profile)}
+                  recentCount={getRecentCount(profile)}
+                />
+              </header>
 
-                <td>
-                  <span className="status-badge approved">
-                    {getRecentCount(profile)}
-                  </span>
-                </td>
+              <ProfileContactStrip profile={profile} />
 
-                <td>
-                  <div className="profile-admin-actions compact-actions">
-                    <IconButton
-                      icon="trash"
-                      label="Delete all applications"
-                      variant="danger"
-                      size="sm"
-                      onClick={() =>
-                        onDeleteApplications({ profile, deleteType: "all" })
-                      }
-                    />
+              <ProfileCareerSnapshot profile={profile} />
 
-                    <IconButton
-                      icon="trash"
-                      label="Delete latest day"
-                      variant="danger"
-                      size="sm"
-                      onClick={() => {
-                        const rows = getProfileRows(profile);
-                        const latestRow = rows[rows.length - 1];
-                        const latestDate = latestRow?.appliedAt
-                          ? new Date(latestRow.appliedAt)
-                              .toISOString()
-                              .slice(0, 10)
-                          : "";
+              <div className="admin-profile-board-card__section">
+                <div className="admin-profile-board-card__section-label">
+                  <Icon name="scrollText" size={14} />
+                  Prompt
+                </div>
+                <PromptActionGroup
+                  profile={profile}
+                  layout="stack"
+                  inputRef={(element) => {
+                    fileInputRefs.current[profile.id] = element;
+                  }}
+                  onViewPrompt={onViewPrompt}
+                  onTriggerPromptUpload={onTriggerPromptUpload}
+                  onPromptFileUpload={onPromptFileUpload}
+                  onRemovePrompt={onRemovePrompt}
+                />
+              </div>
 
-                        if (!latestDate) {
-                          alert("No application date found for this profile.");
-                          return;
-                        }
+              <div className="admin-profile-board-card__section">
+                <div className="admin-profile-board-card__section-label">
+                  <Icon name="fileText" size={14} />
+                  Resume Template
+                </div>
+                <div className="template-profile-picker">
+                  <select
+                    className="admin-select"
+                    value={profile.resume_template_id || ""}
+                    onChange={(e) =>
+                      onUpdateResumeTemplate(profile.id, e.target.value || null)
+                    }
+                  >
+                    <option value="">Use Default Template</option>
+                    {resumeTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                        {template.is_default ? " (Default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p>
+                    Current: {profile.resume_template_name || "Default template"}
+                  </p>
+                </div>
+              </div>
 
-                        onDeleteApplications({
-                          profile,
-                          deleteType: "day",
-                          date: latestDate,
-                        });
-                      }}
-                    />
-                  </div>
-                </td>
-              </tr>
-            ))}
-
-            {profiles.length === 0 && (
-              <tr>
-                <td colSpan="12">No profiles found.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+              <footer className="admin-profile-board-card__footer">
+                <div className="admin-profile-board-card__section-label">
+                  <Icon name="clipboardList" size={14} />
+                  Application cleanup
+                </div>
+                <ApplicationDeleteGroup
+                  profile={profile}
+                  onDeleteApplications={onDeleteApplications}
+                  getLatestApplicationDate={getLatestApplicationDate}
+                />
+              </footer>
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

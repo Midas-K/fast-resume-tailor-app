@@ -57,5 +57,10 @@ router.get(
     logLabel: "All profiles",
   })
 );
+router.get(
+  "/:id",
+  requireAuth,
+  jsonHandler(profileService.getProfileById, { logLabel: "Get profile" })
+);
 
 module.exports = router;

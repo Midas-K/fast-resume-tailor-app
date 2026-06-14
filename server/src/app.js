@@ -1,4 +1,5 @@
 const express = require("express");
+const compression = require("compression");
 const corsMiddleware = require("./config/cors");
 
 const authRoutes = require("./routes/auth");
@@ -9,6 +10,7 @@ const resumeTemplateRoutes = require("./routes/resumeTemplates");
 
 const app = express();
 
+app.use(compression());
 app.use(corsMiddleware);
 app.use(express.json({ limit: "50mb" }));
 

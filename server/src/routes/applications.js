@@ -13,6 +13,22 @@ router.get(
     logLabel: "Application summary",
   })
 );
+router.get(
+  "/admin/profile-counts",
+  requireAuth,
+  requireAdmin,
+  jsonHandler(applicationService.getAdminProfileCounts, {
+    logLabel: "Admin profile application counts",
+  })
+);
+router.get(
+  "/admin/profile/:profileId/applications",
+  requireAuth,
+  requireAdmin,
+  jsonHandler(applicationService.getAdminProfileApplications, {
+    logLabel: "Admin profile applications",
+  })
+);
 router.delete(
   "/admin/profile/:profileId",
   requireAuth,

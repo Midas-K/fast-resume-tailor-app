@@ -1,5 +1,5 @@
 import Icon from "../../UI/Icon";
-import IconButton from "../../UI/IconButton";
+import LabeledIconButton from "../../UI/LabeledIconButton";
 
 function AdminPageHeader({ userName, loading, onRefresh }) {
   return (
@@ -33,11 +33,11 @@ function AdminPageHeader({ userName, loading, onRefresh }) {
           </p>
         </div>
 
-        <IconButton
+        <LabeledIconButton
           icon="refresh"
           label="Refresh data"
           variant="primary"
-          size="lg"
+          size="md"
           loading={loading}
           disabled={loading}
           className="admin-primary-btn"

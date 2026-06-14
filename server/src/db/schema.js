@@ -95,6 +95,30 @@ const createTables = async () => {
     ALTER TABLE profiles
     ADD COLUMN IF NOT EXISTS resume_template_id INTEGER REFERENCES resume_templates(id) ON DELETE SET NULL;
   `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON profiles(user_id);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_applications_profile_id ON applications(profile_id);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_applications_user_id ON applications(user_id);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_applications_created_at ON applications(created_at DESC);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_users_approved_by_admin_id ON users(approved_by_admin_id);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_users_account_type ON users(account_type);
+  `);
 };
 
 module.exports = { createTables };

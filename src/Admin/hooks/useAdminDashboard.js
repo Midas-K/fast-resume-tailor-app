@@ -3,7 +3,8 @@ import {
   deleteProfileApplications as deleteProfileApplicationsApi,
   deleteResumeTemplate,
   deleteUserAccount,
-  fetchAdminApplications,
+  fetchAdminProfileApplications,
+  fetchAdminProfileCounts,
   fetchAdminUsers,
   fetchAllProfiles,
   fetchResumeTemplates,
@@ -25,9 +26,7 @@ import {
 import {
   downloadProfilePrompt,
   getApplicationDateGroups,
-  getMostRecentApplicationCount,
-  getProfileApplicationRows,
-  getWholeApplicationCount,
+  mapAdminApplicationRows,
 } from "../utils/applicationHelpers";
 import {
   formatDateOnly,
@@ -38,9 +37,10 @@ import {
 
 export function useAdminDashboard() {
   const [users, setUsers] = useState([]);
-  const [applications, setApplications] = useState([]);
+  const [profileApplicationCounts, setProfileApplicationCounts] = useState({});
   const [allProfiles, setAllProfiles] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [profilesLoaded, setProfilesLoaded] = useState(false);
 
   const [resumeTemplates, setResumeTemplates] = useState([]);
   const [templateName, setTemplateName] = useState("");
@@ -70,19 +70,54 @@ export function useAdminDashboard() {
     setSelectedApplicationDate(null);
   };
 
-  const loadAdminData = async () => {
+  const buildProfileCountMap = (counts) => {
+    const countMap = {};
+
+    counts.forEach((item) => {
+      countMap[String(item.profile_id)] = {
+        whole_application_count: item.whole_application_count || 0,
+        most_recent_application_count: item.most_recent_application_count || 0,
+        latest_application_at: item.latest_application_at || null,
+      };
+    });
+
+    return countMap;
+  };
+
+  const loadUsersData = async () => {
+    const [nextUsers, counts] = await Promise.all([
+      fetchAdminUsers(),
+      fetchAdminProfileCounts(),
+    ]);
+
+    setUsers(nextUsers);
+    setProfileApplicationCounts(buildProfileCountMap(counts));
+  };
+
+  const loadAllProfilesData = async () => {
+    try {
+      setLoading(true);
+      const nextProfiles = await fetchAllProfiles();
+      setAllProfiles(nextProfiles);
+      setProfilesLoaded(true);
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAdminData = async ({ includeProfiles = false } = {}) => {
     try {
       setLoading(true);
 
-      const [nextUsers, nextApplications, nextProfiles] = await Promise.all([
-        fetchAdminUsers(),
-        fetchAdminApplications(),
-        fetchAllProfiles(),
-      ]);
+      const tasks = [loadUsersData()];
 
-      setUsers(nextUsers);
-      setApplications(nextApplications);
-      setAllProfiles(nextProfiles);
+      if (includeProfiles || profilesLoaded) {
+        tasks.push(loadAllProfilesData());
+      }
+
+      await Promise.all(tasks);
     } catch (error) {
       alert(error.message);
     } finally {
@@ -100,7 +135,10 @@ export function useAdminDashboard() {
   };
 
   const refreshAll = async () => {
-    await Promise.all([loadAdminData(), loadResumeTemplates()]);
+    await Promise.all([
+      loadAdminData({ includeProfiles: true }),
+      loadResumeTemplates(),
+    ]);
   };
 
   const loadTemplatePreview = async (templateId, showErrorAlert = false) => {
@@ -382,7 +420,8 @@ export function useAdminDashboard() {
           nextProfiles.find((item) => String(item.id) === String(profile.id)) ||
           profile;
 
-        const rows = getProfileApplicationRows(applications, updatedProfile);
+        const applicationRows = await fetchAdminProfileApplications(profile.id);
+        const rows = mapAdminApplicationRows(applicationRows, updatedProfile);
         const dateGroups = getApplicationDateGroups(rows);
 
         setSelectedProfileApplications({
@@ -397,19 +436,28 @@ export function useAdminDashboard() {
         }
       }
 
-      await loadAdminData();
+      await loadUsersData();
     } catch (error) {
       alert(error.message);
     }
   };
 
-  const openProfileApplications = (profile) => {
-    const rows = getProfileApplicationRows(applications, profile);
-    const dateGroups = getApplicationDateGroups(rows);
+  const openProfileApplications = async (profile) => {
+    try {
+      setLoading(true);
 
-    setSelectedProfileApplications({ profile, rows, dateGroups });
-    setSelectedApplicationDate(null);
-    setApplicationDashboardMode("dates");
+      const applicationRows = await fetchAdminProfileApplications(profile.id);
+      const rows = mapAdminApplicationRows(applicationRows, profile);
+      const dateGroups = getApplicationDateGroups(rows);
+
+      setSelectedProfileApplications({ profile, rows, dateGroups });
+      setSelectedApplicationDate(null);
+      setApplicationDashboardMode("dates");
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const openApplicationDateList = (date) => {
@@ -449,7 +497,6 @@ export function useAdminDashboard() {
 
   useEffect(() => {
     loadAdminData();
-    loadResumeTemplates();
 
     return () => {
       Object.values(templatePreviewUrlsRef.current).forEach((url) => {
@@ -476,14 +523,36 @@ export function useAdminDashboard() {
         )?.rows || []
       : [];
 
-  const getProfileRows = (profile) =>
-    getProfileApplicationRows(applications, profile);
+  const getProfileCountEntry = (profile) =>
+    profileApplicationCounts[String(profile.id)] || {
+      whole_application_count: 0,
+      most_recent_application_count: 0,
+      latest_application_at: null,
+    };
 
   const getWholeCount = (profile) =>
-    getWholeApplicationCount(applications, profile);
+    getProfileCountEntry(profile).whole_application_count;
 
   const getRecentCount = (profile) =>
-    getMostRecentApplicationCount(applications, profile);
+    getProfileCountEntry(profile).most_recent_application_count;
+
+  const getLatestApplicationDate = (profile) => {
+    const latestAt = getProfileCountEntry(profile).latest_application_at;
+
+    if (!latestAt) {
+      return "";
+    }
+
+    return new Date(latestAt).toISOString().slice(0, 10);
+  };
+
+  const getProfileRows = (profile) => {
+    if (selectedProfileApplications?.profile?.id === profile.id) {
+      return selectedProfileApplications.rows || [];
+    }
+
+    return [];
+  };
 
   return {
     activeSection,
@@ -491,7 +560,7 @@ export function useAdminDashboard() {
     applicationDashboardMode,
     loading,
     users,
-    applications,
+    profileApplicationCounts,
     allProfiles,
     resumeTemplates,
     templateName,
@@ -542,6 +611,8 @@ export function useAdminDashboard() {
     getProfileRows,
     getWholeCount,
     getRecentCount,
+    getLatestApplicationDate,
+    loadAllProfilesData,
     getIsoDateFromFormattedDate,
     getMonthFromDate,
     getYearFromDate,

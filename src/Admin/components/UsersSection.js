@@ -23,9 +23,11 @@ function UsersSection({
   onUpdateApproval,
   onUpdateJobBidStyle,
   onDeleteAccount,
-  getProfileRows,
+  getWholeCount,
+  getRecentCount,
+  getLatestApplicationDate,
   onViewApplications,
-  onDeleteAllApplications,
+  onDeleteApplications,
   onViewPrompt,
   onTriggerPromptUpload,
   onPromptFileUpload,
@@ -55,12 +57,12 @@ function UsersSection({
           selectedUser={selectedUserForProfiles}
           profiles={selectedUserProfiles}
           fileInputRefs={fileInputRefs}
-          getProfileRows={getProfileRows}
+          getWholeCount={getWholeCount}
+          getRecentCount={getRecentCount}
+          getLatestApplicationDate={getLatestApplicationDate}
           onClose={onClearSelectedUser}
           onViewApplications={onViewApplications}
-          onDeleteAllApplications={(profile) =>
-            onDeleteAllApplications({ profile, deleteType: "all" })
-          }
+          onDeleteApplications={onDeleteApplications}
           onViewPrompt={onViewPrompt}
           onTriggerPromptUpload={onTriggerPromptUpload}
           onPromptFileUpload={onPromptFileUpload}
@@ -125,12 +127,12 @@ function UsersSection({
             selectedUser={selectedUserForProfiles}
             profiles={selectedUserProfiles}
             fileInputRefs={fileInputRefs}
-            getProfileRows={getProfileRows}
+            getWholeCount={getWholeCount}
+            getRecentCount={getRecentCount}
+            getLatestApplicationDate={getLatestApplicationDate}
             onClose={onClearSelectedUser}
             onViewApplications={onViewApplications}
-            onDeleteAllApplications={(profile) =>
-              onDeleteAllApplications({ profile, deleteType: "all" })
-            }
+            onDeleteApplications={onDeleteApplications}
             onViewPrompt={onViewPrompt}
             onTriggerPromptUpload={onTriggerPromptUpload}
             onPromptFileUpload={onPromptFileUpload}
@@ -162,12 +164,12 @@ function UsersSection({
             selectedUser={selectedUserForProfiles}
             profiles={selectedUserProfiles}
             fileInputRefs={fileInputRefs}
-            getProfileRows={getProfileRows}
+            getWholeCount={getWholeCount}
+            getRecentCount={getRecentCount}
+            getLatestApplicationDate={getLatestApplicationDate}
             onClose={onClearSelectedUser}
             onViewApplications={onViewApplications}
-            onDeleteAllApplications={(profile) =>
-              onDeleteAllApplications({ profile, deleteType: "all" })
-            }
+            onDeleteApplications={onDeleteApplications}
             onViewPrompt={onViewPrompt}
             onTriggerPromptUpload={onTriggerPromptUpload}
             onPromptFileUpload={onPromptFileUpload}

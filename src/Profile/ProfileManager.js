@@ -80,7 +80,14 @@ function ProfileManager({ user, onLogout, onProfileSelected }) {
         <ProfileList
           profiles={profile.profiles}
           getProfileCount={profile.getProfileCount}
-          onSelectProfile={onProfileSelected}
+          onSelectProfile={async (item) => {
+            try {
+              const fullProfile = await profile.selectProfileForUse(item);
+              onProfileSelected(fullProfile);
+            } catch (error) {
+              alert(error.message);
+            }
+          }}
           onEditProfile={profile.startEditProfile}
           onRemoveProfile={profile.handleRemoveProfile}
           onOpenApplications={profile.openProfileApplicationDashboard}

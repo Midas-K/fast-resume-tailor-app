@@ -1,5 +1,22 @@
 import { formatDateOnly } from "../../shared/utils/format";
 
+export function mapAdminApplicationRows(rows, profile) {
+  return rows
+    .map((row) => ({
+      companyName: row.company_name,
+      roleName: row.role_name,
+      appliedAt: row.created_at,
+      profileName: profile.profile_name || profile.name,
+      profileEmail: profile.profile_email || profile.email,
+      profileLocation: profile.location,
+    }))
+    .sort((a, b) => {
+      const timeA = new Date(a.appliedAt || 0).getTime();
+      const timeB = new Date(b.appliedAt || 0).getTime();
+      return timeA - timeB;
+    });
+}
+
 export function getProfileApplicationRows(applications, profile) {
   const rows = [];
 

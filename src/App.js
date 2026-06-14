@@ -126,6 +126,7 @@ function App() {
 
   return (
     <AppShell
+      compact
       kicker="Fast Apply"
       title="Apply faster"
       subtitle="Paste the job description, copy your AI prompt, and generate a tailored resume in one workspace."
@@ -134,7 +135,7 @@ function App() {
       onLogout={handleLogout}
       onShowProfiles={() => setShowProfiles(true)}
     >
-      <div className="fast-apply-workspace">
+      <div className="fast-apply-workspace fast-apply-workspace--fit">
         <section className="fast-apply-card">
           <div className="fast-section-title">
             <div>
@@ -179,7 +180,7 @@ function App() {
             </div>
           </div>
 
-          <div className="resume-input-group">
+          <div className="resume-input-group resume-input-group--grow">
             <label htmlFor="description">Job Description</label>
             <textarea
               id="description"
@@ -187,26 +188,6 @@ function App() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Paste the job description here..."
-            />
-          </div>
-
-          <div className="fast-profile-strip">
-            <div className="fast-profile-avatar">
-              {(selectedProfile?.name || "P").slice(0, 1).toUpperCase()}
-            </div>
-
-            <div>
-              <span>Profile</span>
-              <strong>{selectedProfile?.name || "No profile selected"}</strong>
-              <p>{selectedProfile?.email || "Choose a profile first."}</p>
-            </div>
-
-            <IconButton
-              icon="users"
-              label="Change profile"
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowProfiles(true)}
             />
           </div>
 
@@ -233,6 +214,7 @@ function App() {
 
         <section className="fast-resume-panel">
           <ResumeBuilderForm
+            compact
             appliedRole={roleName}
             appliedCompany={companyName}
             selectedProfile={selectedProfile}

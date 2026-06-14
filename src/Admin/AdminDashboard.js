@@ -20,6 +20,10 @@ function AdminDashboard({ user, onLogout }) {
     if (section === "templates") {
       admin.loadResumeTemplates();
     }
+
+    if (section === "profiles") {
+      admin.loadAllProfilesData();
+    }
   };
 
   const canManageThisAdmin = (adminItem) =>
@@ -67,9 +71,11 @@ function AdminDashboard({ user, onLogout }) {
               onUpdateApproval={admin.handleUpdateApproval}
               onUpdateJobBidStyle={admin.handleUpdateJobBidStyle}
               onDeleteAccount={admin.handleDeleteAccountForever}
-              getProfileRows={admin.getProfileRows}
+              getWholeCount={admin.getWholeCount}
+              getRecentCount={admin.getRecentCount}
+              getLatestApplicationDate={admin.getLatestApplicationDate}
               onViewApplications={admin.openProfileApplications}
-              onDeleteAllApplications={admin.handleDeleteProfileApplications}
+              onDeleteApplications={admin.handleDeleteProfileApplications}
               onViewPrompt={admin.viewProfilePrompt}
               onTriggerPromptUpload={admin.triggerPromptUpload}
               onPromptFileUpload={admin.handlePromptFileUpload}
@@ -112,7 +118,7 @@ function AdminDashboard({ user, onLogout }) {
             fileInputRefs={admin.fileInputRefs}
             getWholeCount={admin.getWholeCount}
             getRecentCount={admin.getRecentCount}
-            getProfileRows={admin.getProfileRows}
+            getLatestApplicationDate={admin.getLatestApplicationDate}
             onUpdateResumeTemplate={admin.handleUpdateProfileResumeTemplate}
             onViewPrompt={admin.viewProfilePrompt}
             onTriggerPromptUpload={admin.triggerPromptUpload}

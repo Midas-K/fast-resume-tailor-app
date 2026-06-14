@@ -4,17 +4,34 @@ import {
   jsonAuthHeaders,
   readJsonResponse,
 } from "../../shared/api/client";
+import { cachedJsonGet, invalidateCache } from "../../shared/api/cache";
+
+const invalidateAdminReads = () => {
+  invalidateCache(`GET:${API_URL}/api/auth/users`);
+  invalidateCache(`GET:${API_URL}/api/applications/admin/profile-counts`);
+  invalidateCache(`GET:${API_URL}/api/profiles/admin/all`);
+  invalidateCache(`GET:${API_URL}/api/resume-templates`);
+};
 
 export async function fetchAdminUsers() {
   const url = `${API_URL}/api/auth/users`;
-  const response = await fetch(url, { headers: authHeaders() });
-  const result = await readJsonResponse(response, url);
-
-  if (!response.ok) {
-    throw new Error(result.message || "Could not load users.");
-  }
+  const result = await cachedJsonGet(url, { headers: authHeaders() });
 
   return result.users || [];
+}
+
+export async function fetchAdminProfileCounts() {
+  const url = `${API_URL}/api/applications/admin/profile-counts`;
+  const result = await cachedJsonGet(url, { headers: authHeaders() }, 15_000);
+
+  return result.counts || [];
+}
+
+export async function fetchAdminProfileApplications(profileId) {
+  const url = `${API_URL}/api/applications/admin/profile/${profileId}/applications`;
+  const result = await cachedJsonGet(url, { headers: authHeaders() }, 15_000);
+
+  return result.applications || [];
 }
 
 export async function fetchAdminApplications() {
@@ -31,24 +48,14 @@ export async function fetchAdminApplications() {
 
 export async function fetchAllProfiles() {
   const url = `${API_URL}/api/profiles/admin/all`;
-  const response = await fetch(url, { headers: authHeaders() });
-  const result = await readJsonResponse(response, url);
-
-  if (!response.ok) {
-    throw new Error(result.message || "Could not load profiles.");
-  }
+  const result = await cachedJsonGet(url, { headers: authHeaders() }, 15_000);
 
   return result.profiles || [];
 }
 
 export async function fetchResumeTemplates() {
   const url = `${API_URL}/api/resume-templates`;
-  const response = await fetch(url, { headers: authHeaders() });
-  const result = await readJsonResponse(response, url);
-
-  if (!response.ok) {
-    throw new Error(result.message || "Could not load resume templates.");
-  }
+  const result = await cachedJsonGet(url, { headers: authHeaders() }, 15_000);
 
   return result.templates || [];
 }
@@ -155,6 +162,7 @@ export async function updateUserApproval(userId, isApproved) {
     throw new Error(result.message || "Could not update account.");
   }
 
+  invalidateAdminReads();
   return result;
 }
 
@@ -170,6 +178,7 @@ export async function deleteUserAccount(userId) {
     throw new Error(result.message || "Could not permanently delete account.");
   }
 
+  invalidateAdminReads();
   return result;
 }
 
@@ -186,6 +195,7 @@ export async function updateUserJobBidStyle(userId, jobBidStyle) {
     throw new Error(result.message || "Could not update job-bid style.");
   }
 
+  invalidateAdminReads();
   return result;
 }
 
@@ -202,6 +212,7 @@ export async function saveProfilePrompt(profileId, adminPrompt) {
     throw new Error(result.message || "Could not update profile prompt.");
   }
 
+  invalidateAdminReads();
   return result;
 }
 
@@ -218,5 +229,9 @@ export async function deleteProfileApplications(profileId, payload) {
     throw new Error(result.message || "Could not delete application records.");
   }
 
+  invalidateCache(`GET:${API_URL}/api/applications/admin/profile-counts`);
+  invalidateCache(
+    `GET:${API_URL}/api/applications/admin/profile/${profileId}/applications`
+  );
   return result;
 }

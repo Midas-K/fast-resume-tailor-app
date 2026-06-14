@@ -38,9 +38,6 @@ const listProfiles = async (req) => {
         profiles.location,
         profiles.phone,
         profiles.email,
-        profiles.education,
-        profiles.experience,
-        profiles.admin_prompt,
         profiles.resume_template_id,
         resume_templates.name AS resume_template_name,
         resume_templates.file_name AS resume_template_file_name,
@@ -56,6 +53,40 @@ const listProfiles = async (req) => {
   );
 
   return { body: { profiles: result.rows } };
+};
+
+const getProfileById = async (req) => {
+  const { id } = req.params;
+
+  const result = await pool.query(
+    `
+      SELECT
+        profiles.id,
+        profiles.name,
+        profiles.location,
+        profiles.phone,
+        profiles.email,
+        profiles.education,
+        profiles.experience,
+        profiles.admin_prompt,
+        profiles.resume_template_id,
+        resume_templates.name AS resume_template_name,
+        resume_templates.file_name AS resume_template_file_name,
+        profiles.created_at
+      FROM profiles
+      LEFT JOIN resume_templates
+        ON resume_templates.id = profiles.resume_template_id
+       AND resume_templates.is_active = true
+      WHERE profiles.id = $1 AND profiles.user_id = $2
+    `,
+    [id, req.user.id]
+  );
+
+  if (result.rows.length === 0) {
+    throw new HttpError(404, "Profile not found.");
+  }
+
+  return { body: { profile: result.rows[0] } };
 };
 
 const createProfile = async (req) => {
@@ -432,6 +463,7 @@ const listAllProfilesForAdmin = async (req) => {
 
 module.exports = {
   listProfiles,
+  getProfileById,
   createProfile,
   updateProfile,
   updateAdminPrompt,

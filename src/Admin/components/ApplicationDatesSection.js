@@ -1,4 +1,5 @@
 import IconButton from "../../UI/IconButton";
+import LabeledIconButton from "../../UI/LabeledIconButton";
 
 function ApplicationDatesSection({
   profileApplications,
@@ -61,10 +62,10 @@ function ApplicationDatesSection({
                   </td>
 
                   <td>
-                    <IconButton
-                      icon="trash"
+                    <LabeledIconButton
+                      icon="calendarX"
                       label="Delete this day"
-                      variant="danger"
+                      variant="danger-soft"
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();

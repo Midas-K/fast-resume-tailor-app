@@ -43,6 +43,52 @@ const canAdminManageProfileApplications = async ({ profileId, adminUser }) => {
   return profile;
 };
 
+const assertAdminCanViewProfile = async ({ profileId, adminUser }) => {
+  const profileCheck = await pool.query(
+    `
+      SELECT
+        profiles.id,
+        profiles.user_id,
+        users.account_type,
+        users.approved_by_admin_id
+      FROM profiles
+      JOIN users ON users.id = profiles.user_id
+      WHERE profiles.id = $1
+    `,
+    [profileId]
+  );
+
+  if (profileCheck.rows.length === 0) {
+    throw new HttpError(404, "Profile not found.");
+  }
+
+  const profile = profileCheck.rows[0];
+
+  if (isOwnerEmail(adminUser.email)) {
+    return profile;
+  }
+
+  if (isSpecialAdminEmail(adminUser.email)) {
+    if (
+      profile.account_type === "user" &&
+      String(profile.approved_by_admin_id) === String(adminUser.id)
+    ) {
+      return profile;
+    }
+
+    throw new HttpError(403, "You do not have permission to view this profile.");
+  }
+
+  if (String(profile.approved_by_admin_id) !== String(adminUser.id)) {
+    throw new HttpError(
+      403,
+      "You can only view applications for users approved by you."
+    );
+  }
+
+  return profile;
+};
+
 const adminSummaryQuery = `
   SELECT
     applications.normalized_company_name,
@@ -67,6 +113,104 @@ const adminSummaryQuery = `
   JOIN users ON users.id = applications.user_id
   JOIN profiles ON profiles.id = applications.profile_id
 `;
+
+const adminProfileCountsQuery = `
+  WITH profile_applications AS (
+    SELECT
+      p.id AS profile_id,
+      a.id AS application_id,
+      a.created_at AS applied_at
+    FROM profiles p
+    JOIN users u ON u.id = p.user_id
+    LEFT JOIN applications a ON a.profile_id = p.id
+    WHERE 1 = 1
+`;
+
+const getAdminProfileCounts = async (req) => {
+  let result;
+
+  if (isOwnerEmail(req.user.email)) {
+    result = await pool.query(
+      `
+        ${adminProfileCountsQuery}
+      ),
+      latest_dates AS (
+        SELECT
+          profile_id,
+          DATE(MAX(applied_at)) AS latest_application_date
+        FROM profile_applications
+        GROUP BY profile_id
+      )
+      SELECT
+        pa.profile_id,
+        COUNT(pa.application_id)::int AS whole_application_count,
+        COUNT(pa.application_id) FILTER (
+          WHERE DATE(pa.applied_at) = ld.latest_application_date
+        )::int AS most_recent_application_count,
+        MAX(pa.applied_at) AS latest_application_at
+      FROM profile_applications pa
+      LEFT JOIN latest_dates ld ON ld.profile_id = pa.profile_id
+      GROUP BY pa.profile_id, ld.latest_application_date
+      ORDER BY pa.profile_id DESC
+      `
+    );
+  } else {
+    result = await pool.query(
+      `
+        ${adminProfileCountsQuery}
+        AND u.account_type = 'user'
+        AND u.approved_by_admin_id = $1
+      ),
+      latest_dates AS (
+        SELECT
+          profile_id,
+          DATE(MAX(applied_at)) AS latest_application_date
+        FROM profile_applications
+        GROUP BY profile_id
+      )
+      SELECT
+        pa.profile_id,
+        COUNT(pa.application_id)::int AS whole_application_count,
+        COUNT(pa.application_id) FILTER (
+          WHERE DATE(pa.applied_at) = ld.latest_application_date
+        )::int AS most_recent_application_count,
+        MAX(pa.applied_at) AS latest_application_at
+      FROM profile_applications pa
+      LEFT JOIN latest_dates ld ON ld.profile_id = pa.profile_id
+      GROUP BY pa.profile_id, ld.latest_application_date
+      ORDER BY pa.profile_id DESC
+      `,
+      [req.user.id]
+    );
+  }
+
+  return { body: { counts: result.rows } };
+};
+
+const getAdminProfileApplications = async (req) => {
+  const { profileId } = req.params;
+
+  await assertAdminCanViewProfile({
+    profileId,
+    adminUser: req.user,
+  });
+
+  const result = await pool.query(
+    `
+      SELECT
+        id,
+        company_name,
+        role_name,
+        created_at
+      FROM applications
+      WHERE profile_id = $1
+      ORDER BY created_at DESC
+    `,
+    [profileId]
+  );
+
+  return { body: { applications: result.rows } };
+};
 
 const getAdminSummary = async (req) => {
   let result;
@@ -295,6 +439,8 @@ const createApplication = async (req) => {
 
 module.exports = {
   getAdminSummary,
+  getAdminProfileCounts,
+  getAdminProfileApplications,
   deleteProfileApplications,
   getProfileCounts,
   getProfileApplications,
