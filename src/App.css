@@ -1742,6 +1742,48 @@ select {
 
 .build-profile-compact-card {
   padding: 18px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.build-profile-compact-card .fast-profile-reference {
+  flex: 1;
+  min-height: 0;
+}
+
+.build-template-confirm-note {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  background: linear-gradient(180deg, #fffbeb, #fff7ed);
+}
+
+.build-template-confirm-note strong {
+  display: block;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.build-template-confirm-note p {
+  margin: 4px 0 2px;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.build-template-confirm-note span {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .build-profile-mini-grid {
@@ -4258,4 +4300,172 @@ select {
   color: #64748b;
   font-size: 11px;
   line-height: 1.35;
+}
+
+.template-list-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.template-list-zone__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.template-list-zone--default .template-list-zone__label {
+  color: #92400e;
+}
+
+.template-list-item--default {
+  border: 2px solid rgba(245, 158, 11, 0.45);
+  background:
+    linear-gradient(180deg, #fffbeb 0%, #fff7ed 100%);
+  box-shadow: 0 16px 36px rgba(245, 158, 11, 0.12);
+}
+
+.template-list-item--custom {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.template-list-item__title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.template-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.template-badge--default {
+  color: #92400e;
+  background: rgba(251, 191, 36, 0.22);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.template-badge--custom {
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+.admin-template-picker {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-template-picker__zone-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.admin-template-picker__default-zone .admin-template-picker__zone-label {
+  color: #92400e;
+}
+
+.admin-template-picker__custom-list {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-template-picker__option {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+.admin-template-picker__option--default {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: linear-gradient(180deg, #fffbeb, #fff7ed);
+}
+
+.admin-template-picker__option--custom {
+  background: #f8fafc;
+}
+
+.admin-template-picker__option.is-selected {
+  border-color: rgba(79, 70, 229, 0.45);
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.12);
+}
+
+.admin-template-picker__option--default.is-selected {
+  border-color: rgba(245, 158, 11, 0.65);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+}
+
+.admin-template-picker__option-title {
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-template-picker__option-meta {
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.admin-template-picker__current {
+  margin: 0;
+  color: #475569;
+  font-size: 11px;
+}
+
+.resume-save-folder-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(79, 70, 229, 0.14);
+  background: linear-gradient(180deg, #f8fafc, #eef2ff);
+}
+
+.resume-save-folder-note p {
+  flex: 1 1 220px;
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.resume-form-footer--solo {
+  display: grid;
+  gap: 0;
 }

@@ -725,6 +725,9 @@ async function buildResumeFromTemplate({ user, body }) {
       type: "pdf",
       buffer: pdfBuffer,
       fileName: `${baseFileName}.pdf`,
+      templateName: template.name,
+      templateFileName: template.file_name,
+      usesDefaultTemplate: !profile.resume_template_id,
     };
   } finally {
     if (tempDir) {
@@ -740,4 +743,87 @@ async function buildResumeFromTemplate({ user, body }) {
   }
 }
 
-module.exports = { buildResumeFromTemplate };
+async function buildResumeFromProfile({ user, body }) {
+  const { profileId, roleName, companyName, jobDescription } = body;
+
+  if (!profileId) {
+    throw createServiceError("Profile is required.", 400);
+  }
+
+  if (!roleName || !String(roleName).trim()) {
+    throw createServiceError("Role name is required.", 400);
+  }
+
+  if (!companyName || !String(companyName).trim()) {
+    throw createServiceError("Company name is required.", 400);
+  }
+
+  if (!jobDescription || !String(jobDescription).trim()) {
+    throw createServiceError("Job description is required.", 400);
+  }
+
+  const profileResult = await pool.query(
+    `
+      SELECT
+        id,
+        user_id,
+        name,
+        location,
+        phone,
+        email,
+        education,
+        experience,
+        resume_template_id
+      FROM profiles
+      WHERE id = $1
+        AND user_id = $2
+    `,
+    [profileId, user.id]
+  );
+
+  if (profileResult.rows.length === 0) {
+    throw createServiceError("Selected profile was not found.", 404);
+  }
+
+  const profile = profileResult.rows[0];
+  const experienceList = parseJsonField(profile.experience);
+
+  if (experienceList.length === 0) {
+    throw createServiceError(
+      "Add at least one experience item to your profile before building a resume.",
+      400
+    );
+  }
+
+  const template = await getAssignedOrDefaultTemplate(profile.id);
+
+  if (!template) {
+    throw createServiceError(
+      "No DOCX resume template found. Please ask admin to upload a template.",
+      404
+    );
+  }
+
+  const experienceInputs = experienceList.map((item) => ({
+    companyName: item.companyName || "",
+    title: item.title || "",
+    timeline: item.timeline || "",
+    location: item.location || profile.location || "",
+    details: item.details || "",
+  }));
+
+  return buildResumeFromTemplate({
+    user,
+    body: {
+      profileId,
+      roleName: String(roleName).trim(),
+      companyName: String(companyName).trim(),
+      summary: "",
+      skills: "",
+      certification: "",
+      experienceInputs,
+    },
+  });
+}
+
+module.exports = { buildResumeFromTemplate, buildResumeFromProfile };

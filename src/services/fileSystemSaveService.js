@@ -1,3 +1,10 @@
+import {
+  clearStoredCustomerRootHandle,
+  getStoredCustomerRootHandle,
+  storeCustomerRootHandle,
+  verifyDirectoryHandlePermission,
+} from "./customerFolderStorage";
+
 const sanitizeFolderName = (value, fallback = "Unknown") => {
   const cleaned = String(value || "")
     .trim()
@@ -49,7 +56,7 @@ const sanitizeFileName = (value, fallback = "First_Last") => {
   return cleaned || fallback;
 };
 
-const getTodayFolderName = () => {
+export const getTodayFolderName = () => {
   const now = new Date();
   const month = now.getMonth() + 1;
   const day = now.getDate();
@@ -57,36 +64,103 @@ const getTodayFolderName = () => {
   return sanitizeFolderName(`${month}.${day}`, "Today");
 };
 
-const downloadBlobFallback = ({ pdfBytes, fileName }) => {
-  const blob = new Blob([pdfBytes], {
-    type: "application/pdf",
-  });
+export const getLocalDayBounds = () => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
 
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  URL.revokeObjectURL(url);
+  return {
+    dayStart: start.toISOString(),
+    dayEnd: end.toISOString(),
+    dateFolder: getTodayFolderName(),
+  };
 };
+
+const buildNumberedCompanyRoleFolder = ({
+  applicationNumber,
+  companyName,
+  roleName,
+}) => {
+  const sequence = Number(applicationNumber);
+
+  if (!Number.isFinite(sequence) || sequence < 1) {
+    throw new Error("Application number must be a positive integer.");
+  }
+
+  const companyRoleLabel = sanitizeFolderName(
+    `${companyName || "Unknown Company"} - ${roleName || "Unknown Role"}`,
+    "Unknown Company - Unknown Role"
+  );
+
+  return sanitizeFolderName(
+    `${sequence}. ${companyRoleLabel}`,
+    `${sequence}. Unknown Company - Unknown Role`
+  );
+};
+
+export const FOLDER_PICKER_REQUIRED_MESSAGE =
+  "Select a folder on your laptop or computer to save your resume. Use Chrome or Edge (HTTPS or localhost), then choose a local folder such as Documents or Desktop. Files stay on your device only.";
+
+export const FOLDER_PICKER_USER_HINT =
+  "Choose a folder on your laptop or computer (Documents, Desktop, or any local drive). The file is saved on your device, not on the server.";
 
 export const canUseFolderPicker = () => {
   return Boolean(window.showDirectoryPicker && window.isSecureContext);
 };
 
-export const pickCustomerRootFolder = async () => {
-  if (!canUseFolderPicker()) {
-    return null;
+const openDirectoryPicker = async () => {
+  const pickerOptions = {
+    id: "frt-customer-resume-root",
+    mode: "readwrite",
+  };
+
+  if (typeof window.showDirectoryPicker === "function") {
+    try {
+      return await window.showDirectoryPicker({
+        ...pickerOptions,
+        startIn: "documents",
+      });
+    } catch (error) {
+      if (error?.name === "TypeError") {
+        return window.showDirectoryPicker(pickerOptions);
+      }
+
+      throw error;
+    }
   }
 
-  return window.showDirectoryPicker({
-    mode: "readwrite",
-  });
+  throw new Error(FOLDER_PICKER_REQUIRED_MESSAGE);
+};
+
+export const resolveCustomerRootFolder = async ({ forcePicker = false } = {}) => {
+  if (!canUseFolderPicker()) {
+    throw new Error(FOLDER_PICKER_REQUIRED_MESSAGE);
+  }
+
+  if (!forcePicker) {
+    const storedHandle = await getStoredCustomerRootHandle();
+
+    if (storedHandle && (await verifyDirectoryHandlePermission(storedHandle))) {
+      return {
+        handle: storedHandle,
+        reusedSavedFolder: true,
+      };
+    }
+  }
+
+  const handle = await openDirectoryPicker();
+  await storeCustomerRootHandle(handle);
+
+  return {
+    handle,
+    reusedSavedFolder: false,
+  };
+};
+
+export const changeCustomerRootFolder = async () => {
+  await clearStoredCustomerRootHandle();
+  return resolveCustomerRootFolder({ forcePicker: true });
 };
 
 export const saveResumeToCustomerFolder = async ({
@@ -94,30 +168,22 @@ export const saveResumeToCustomerFolder = async ({
   profileName = "First_Last",
   companyName = "Unknown Company",
   roleName = "Unknown Role",
+  applicationNumber = 1,
   rootDirectoryHandle = null,
 }) => {
+  if (!rootDirectoryHandle) {
+    throw new Error(FOLDER_PICKER_REQUIRED_MESSAGE);
+  }
+
   const dateFolder = getTodayFolderName();
 
-  const companyRoleFolder = sanitizeFolderName(
-    `${companyName || "Unknown Company"} - ${roleName || "Unknown Role"}`,
-    "Unknown Company - Unknown Role"
-  );
+  const companyRoleFolder = buildNumberedCompanyRoleFolder({
+    applicationNumber,
+    companyName,
+    roleName,
+  });
 
   const fileName = `${sanitizeFileName(profileName, "First_Last")}.pdf`;
-
-  if (!rootDirectoryHandle) {
-    downloadBlobFallback({
-      pdfBytes,
-      fileName,
-    });
-
-    return {
-      savedWithFolderPicker: false,
-      dateFolder: "Downloads",
-      companyRoleFolder,
-      fileName,
-    };
-  }
 
   const dateDirectoryHandle = await rootDirectoryHandle.getDirectoryHandle(
     dateFolder,
@@ -140,9 +206,10 @@ export const saveResumeToCustomerFolder = async ({
   await writable.close();
 
   return {
-    savedWithFolderPicker: true,
     dateFolder,
     companyRoleFolder,
     fileName,
+    applicationNumber,
+    savedPath: `${dateFolder}/${companyRoleFolder}/${fileName}`,
   };
 };

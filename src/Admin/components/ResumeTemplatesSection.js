@@ -1,6 +1,79 @@
+import Icon from "../../UI/Icon";
 import IconButton from "../../UI/IconButton";
 import TemplatePreview from "./TemplatePreview";
 import TemplateRequirementsCard from "./TemplateRequirementsCard";
+import { splitResumeTemplates } from "../utils/templateHelpers";
+
+function TemplateListItem({
+  template,
+  templatePreviewUrls,
+  onSetDefault,
+  onRemoveTemplate,
+  onRefreshPreview,
+  variant = "custom",
+}) {
+  const isDefault = variant === "default";
+
+  return (
+    <div
+      className={
+        isDefault
+          ? "template-list-item template-list-item--default"
+          : "template-list-item template-list-item--custom"
+      }
+    >
+      <div className="template-main-info">
+        <div>
+          <div className="template-list-item__title-row">
+            <h4>{template.name}</h4>
+            {isDefault ? (
+              <span className="template-badge template-badge--default">
+                <Icon name="star" size={12} />
+                Default
+              </span>
+            ) : (
+              <span className="template-badge template-badge--custom">Custom</span>
+            )}
+          </div>
+          <p>{template.description || "No description"}</p>
+          <small>{template.file_name}</small>
+        </div>
+      </div>
+
+      <div className="template-meta-row">
+        <span>
+          Uploaded: {new Date(template.created_at).toLocaleString()}
+        </span>
+      </div>
+
+      <TemplatePreview
+        template={template}
+        previewUrl={templatePreviewUrls[template.id]}
+        onRefresh={() => onRefreshPreview(template.id, true)}
+      />
+
+      <div className="template-actions">
+        {!isDefault && (
+          <IconButton
+            icon="star"
+            label="Set as default"
+            variant="success"
+            size="sm"
+            onClick={() => onSetDefault(template.id)}
+          />
+        )}
+
+        <IconButton
+          icon="trash"
+          label="Remove template"
+          variant="danger"
+          size="sm"
+          onClick={() => onRemoveTemplate(template.id)}
+        />
+      </div>
+    </div>
+  );
+}
 
 function ResumeTemplatesSection({
   resumeTemplates,
@@ -19,14 +92,16 @@ function ResumeTemplatesSection({
   onRemoveTemplate,
   onRefreshPreview,
 }) {
+  const { defaultTemplate, otherTemplates } = splitResumeTemplates(resumeTemplates);
+
   return (
     <section className="admin-content-card">
       <div className="admin-section-header">
         <div>
           <h2>Resume Templates</h2>
           <p>
-            Upload DOCX resume templates. Admins can set one default template and
-            assign templates to user profiles.
+            Upload DOCX resume templates. The default template is highlighted and
+            always shown first; custom templates are listed oldest to newest.
           </p>
         </div>
 
@@ -106,8 +181,8 @@ function ResumeTemplatesSection({
         <div className="template-list-card">
           <h3>Available Templates</h3>
           <p>
-            These DOCX templates can be assigned to user profiles. Preview shows
-            a realistic sample resume generated from each uploaded template.
+            Default template uses a gold spotlight card. Custom templates use a
+            lighter style and appear below in oldest-first order.
           </p>
 
           {resumeTemplates.length === 0 ? (
@@ -115,54 +190,45 @@ function ResumeTemplatesSection({
               No resume templates uploaded yet.
             </div>
           ) : (
-            <div className="template-list">
-              {resumeTemplates.map((template) => (
-                <div className="template-list-item" key={template.id}>
-                  <div className="template-main-info">
-                    <div>
-                      <h4>{template.name}</h4>
-                      <p>{template.description || "No description"}</p>
-                      <small>{template.file_name}</small>
-                    </div>
-
-                    {template.is_default && (
-                      <span className="status-badge approved">Default</span>
-                    )}
+            <div className="template-list-stack">
+              {defaultTemplate && (
+                <div className="template-list-zone template-list-zone--default">
+                  <div className="template-list-zone__label">
+                    <Icon name="star" size={14} />
+                    Default template
                   </div>
-
-                  <div className="template-meta-row">
-                    <span>
-                      Uploaded: {new Date(template.created_at).toLocaleString()}
-                    </span>
-                  </div>
-
-                  <TemplatePreview
-                    template={template}
-                    previewUrl={templatePreviewUrls[template.id]}
-                    onRefresh={() => onRefreshPreview(template.id, true)}
+                  <TemplateListItem
+                    template={defaultTemplate}
+                    templatePreviewUrls={templatePreviewUrls}
+                    onSetDefault={onSetDefault}
+                    onRemoveTemplate={onRemoveTemplate}
+                    onRefreshPreview={onRefreshPreview}
+                    variant="default"
                   />
+                </div>
+              )}
 
-                  <div className="template-actions">
-                    {!template.is_default && (
-                      <IconButton
-                        icon="check"
-                        label="Set as default"
-                        variant="success"
-                        size="sm"
-                        onClick={() => onSetDefault(template.id)}
+              {otherTemplates.length > 0 && (
+                <div className="template-list-zone template-list-zone--custom">
+                  <div className="template-list-zone__label">
+                    <Icon name="layers" size={14} />
+                    Custom templates ({otherTemplates.length})
+                  </div>
+                  <div className="template-list">
+                    {otherTemplates.map((template) => (
+                      <TemplateListItem
+                        key={template.id}
+                        template={template}
+                        templatePreviewUrls={templatePreviewUrls}
+                        onSetDefault={onSetDefault}
+                        onRemoveTemplate={onRemoveTemplate}
+                        onRefreshPreview={onRefreshPreview}
+                        variant="custom"
                       />
-                    )}
-
-                    <IconButton
-                      icon="trash"
-                      label="Remove template"
-                      variant="danger"
-                      size="sm"
-                      onClick={() => onRemoveTemplate(template.id)}
-                    />
+                    ))}
                   </div>
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>

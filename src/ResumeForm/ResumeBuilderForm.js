@@ -3,10 +3,15 @@ import Icon from "../UI/Icon";
 import IconButton from "../UI/IconButton";
 import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
 import { API_URL, getToken } from "../shared/api/client";
+import { fetchDailyApplicationSequence } from "../shared/api/applicationsApi";
 import { parseJsonField } from "../shared/utils/format";
 import {
   canUseFolderPicker,
-  pickCustomerRootFolder,
+  changeCustomerRootFolder,
+  FOLDER_PICKER_USER_HINT,
+  FOLDER_PICKER_REQUIRED_MESSAGE,
+  getLocalDayBounds,
+  resolveCustomerRootFolder,
   saveResumeToCustomerFolder,
 } from "../services/fileSystemSaveService";
 
@@ -23,6 +28,7 @@ function ResumeBuilderForm({
   const [activeExperienceIndex, setActiveExperienceIndex] = useState(0);
   const [activeSection, setActiveSection] = useState("summary");
   const [loading, setLoading] = useState(false);
+  const [saveFolderReady, setSaveFolderReady] = useState(canUseFolderPicker());
 
   const resumeSections = [
     { id: "profile", label: "Profile" },
@@ -164,6 +170,11 @@ function ResumeBuilderForm({
       return;
     }
 
+    if (!canUseFolderPicker()) {
+      alert(FOLDER_PICKER_REQUIRED_MESSAGE);
+      return;
+    }
+
     let rootDirectoryHandle = null;
 
     try {
@@ -175,9 +186,9 @@ function ResumeBuilderForm({
         If we wait until after fetch/blob, Chrome blocks it with:
         "Must be handling a user gesture to show a file picker."
       */
-      if (canUseFolderPicker()) {
-        rootDirectoryHandle = await pickCustomerRootFolder();
-      }
+      const folderSelection = await resolveCustomerRootFolder();
+      rootDirectoryHandle = folderSelection.handle;
+      setSaveFolderReady(true);
 
       const response = await fetch(`${API_URL}/api/build-resume/from-template`, {
         method: "POST",
@@ -212,11 +223,19 @@ function ResumeBuilderForm({
       const arrayBuffer = await blob.arrayBuffer();
       const pdfBytes = new Uint8Array(arrayBuffer);
 
+      const { dayStart, dayEnd } = getLocalDayBounds();
+      const { sequenceNumber } = await fetchDailyApplicationSequence({
+        profileId: selectedProfile.id,
+        dayStart,
+        dayEnd,
+      });
+
       const saveResult = await saveResumeToCustomerFolder({
         pdfBytes,
         profileName: selectedProfile?.name || "Profile",
         companyName: appliedCompany?.trim() || "Unknown Company",
         roleName: appliedRole?.trim() || "Unknown Role",
+        applicationNumber: sequenceNumber,
         rootDirectoryHandle,
       });
 
@@ -225,9 +244,7 @@ function ResumeBuilderForm({
       clearResumeInputs();
 
       alert(
-        `Resume saved!\n${saveResult.dateFolder}/${
-          saveResult.companyRoleFolder || saveResult.companyFolder
-        }/${saveResult.fileName}`
+        `Resume saved to your laptop/computer!\n${saveResult.savedPath || `${saveResult.dateFolder}/${saveResult.companyRoleFolder}/${saveResult.fileName}`}`
       );
     } catch (error) {
       if (
@@ -240,6 +257,30 @@ function ResumeBuilderForm({
       alert(error.message || "Could not generate resume PDF.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleChangeSaveFolder = async () => {
+    if (!canUseFolderPicker()) {
+      alert(FOLDER_PICKER_REQUIRED_MESSAGE);
+      return;
+    }
+
+    try {
+      await changeCustomerRootFolder();
+      setSaveFolderReady(true);
+      alert(
+        "Save folder updated on your laptop/computer. Your next resume will be saved there."
+      );
+    } catch (error) {
+      if (
+        error?.name === "AbortError" ||
+        String(error?.message || "").toLowerCase().includes("aborted")
+      ) {
+        return;
+      }
+
+      alert(error.message || "Could not change save folder.");
     }
   };
 
@@ -261,7 +302,8 @@ function ResumeBuilderForm({
           {!compact && (
             <p>
               The assigned admin DOCX template is filled, converted to PDF, and
-              saved to your selected customer folder.
+              saved to a folder on your laptop or computer. You choose where
+              it goes — the file stays on your device.
             </p>
           )}
         </div>
@@ -472,6 +514,22 @@ function ResumeBuilderForm({
             </div>
 
             <div className="resume-form-footer resume-form-footer--solo">
+              <div className="resume-save-folder-note">
+                <Icon name="folder" size={14} />
+                <p>
+                  {saveFolderReady
+                    ? "Saves to a folder on your laptop or computer."
+                    : FOLDER_PICKER_USER_HINT}
+                </p>
+                <IconButton
+                  icon="folder"
+                  label="Change save folder"
+                  variant="ghost"
+                  size="sm"
+                  disabled={loading}
+                  onClick={handleChangeSaveFolder}
+                />
+              </div>
               <IconButton
                 icon="fileDown"
                 label={loading ? "Generating resume..." : "Save PDF resume"}
@@ -556,6 +614,22 @@ Natural Language Processing: Text classification, NER, summarization`}
       </div>
 
       <div className="profile-actions">
+        <div className="resume-save-folder-note">
+          <Icon name="folder" size={14} />
+          <p>
+            {saveFolderReady
+              ? "Saves to a folder on your laptop or computer."
+              : FOLDER_PICKER_USER_HINT}
+          </p>
+          <IconButton
+            icon="folder"
+            label="Change save folder"
+            variant="ghost"
+            size="sm"
+            disabled={loading}
+            onClick={handleChangeSaveFolder}
+          />
+        </div>
         <IconButton
           icon="fileDown"
           label={loading ? "Generating resume..." : "Save PDF resume"}

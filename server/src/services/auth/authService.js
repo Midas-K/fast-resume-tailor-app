@@ -324,7 +324,7 @@ const listUsers = async (req) => {
           u.created_at
         FROM users u
         LEFT JOIN users a ON u.approved_by_admin_id = a.id
-        ORDER BY u.created_at DESC
+        ORDER BY u.created_at ASC
       `
     );
   } else if (requesterIsSpecialAdmin) {
@@ -352,7 +352,7 @@ const listUsers = async (req) => {
               OR u.approved_by_admin_id = $1
             )
           )
-        ORDER BY u.created_at DESC
+        ORDER BY u.created_at ASC
       `,
       [req.user.id]
     );
@@ -378,7 +378,7 @@ const listUsers = async (req) => {
             u.is_approved = false
             OR u.approved_by_admin_id = $1
           )
-        ORDER BY u.created_at DESC
+        ORDER BY u.created_at ASC
       `,
       [req.user.id]
     );

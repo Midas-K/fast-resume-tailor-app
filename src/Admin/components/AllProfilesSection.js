@@ -1,4 +1,5 @@
 import Icon from "../../UI/Icon";
+import AdminTemplatePicker from "./AdminTemplatePicker";
 import {
   ApplicationCountBadges,
   ApplicationDeleteGroup,
@@ -82,26 +83,14 @@ function AllProfilesSection({
                   <Icon name="fileText" size={14} />
                   Resume Template
                 </div>
-                <div className="template-profile-picker">
-                  <select
-                    className="admin-select"
-                    value={profile.resume_template_id || ""}
-                    onChange={(e) =>
-                      onUpdateResumeTemplate(profile.id, e.target.value || null)
-                    }
-                  >
-                    <option value="">Use Default Template</option>
-                    {resumeTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.name}
-                        {template.is_default ? " (Default)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <p>
-                    Current: {profile.resume_template_name || "Default template"}
-                  </p>
-                </div>
+                <AdminTemplatePicker
+                  value={profile.resume_template_id}
+                  templates={resumeTemplates}
+                  currentLabel={profile.resume_template_name}
+                  onChange={(templateId) =>
+                    onUpdateResumeTemplate(profile.id, templateId)
+                  }
+                />
               </div>
 
               <footer className="admin-profile-board-card__footer">

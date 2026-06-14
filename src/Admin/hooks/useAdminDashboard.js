@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteProfileApplications as deleteProfileApplicationsApi,
   deleteResumeTemplate,
@@ -22,7 +22,9 @@ import {
   filterProfilesForUser,
   filterUsersControlledByAdmin,
   isProtectedAdmin,
+  sortByCreatedAtAsc,
 } from "../utils/adminPermissions";
+import { sortResumeTemplatesForAdmin } from "../utils/templateHelpers";
 import {
   downloadProfilePrompt,
   getApplicationDateGroups,
@@ -505,14 +507,24 @@ export function useAdminDashboard() {
     };
   }, []);
 
-  const adminUsers = users.filter((item) => item.account_type === "admin");
-  const normalAdminUsers = users.filter((item) => item.account_type === "user");
+  const sortedUsers = useMemo(() => sortByCreatedAtAsc(users), [users]);
+  const sortedAllProfiles = useMemo(
+    () => sortByCreatedAtAsc(allProfiles),
+    [allProfiles]
+  );
+  const sortedResumeTemplates = useMemo(
+    () => sortResumeTemplatesForAdmin(resumeTemplates),
+    [resumeTemplates]
+  );
+
+  const adminUsers = sortedUsers.filter((item) => item.account_type === "admin");
+  const normalAdminUsers = sortedUsers.filter((item) => item.account_type === "user");
   const usersControlledBySelectedAdmin = filterUsersControlledByAdmin(
-    users,
+    sortedUsers,
     selectedAdminForUsers
   );
   const selectedUserProfiles = filterProfilesForUser(
-    allProfiles,
+    sortedAllProfiles,
     selectedUserForProfiles
   );
 
@@ -559,10 +571,10 @@ export function useAdminDashboard() {
     setActiveSection,
     applicationDashboardMode,
     loading,
-    users,
+    users: sortedUsers,
     profileApplicationCounts,
-    allProfiles,
-    resumeTemplates,
+    allProfiles: sortedAllProfiles,
+    resumeTemplates: sortedResumeTemplates,
     templateName,
     setTemplateName,
     templateDescription,

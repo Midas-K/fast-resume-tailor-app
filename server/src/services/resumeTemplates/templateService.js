@@ -16,7 +16,7 @@ async function listActiveTemplates() {
           created_at
         FROM resume_templates
         WHERE is_active = true
-        ORDER BY is_default DESC, created_at DESC
+        ORDER BY is_default DESC, created_at ASC
       `
   );
 

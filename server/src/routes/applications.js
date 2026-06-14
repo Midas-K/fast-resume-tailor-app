@@ -51,6 +51,13 @@ router.get(
     logLabel: "Profile applications",
   })
 );
+router.get(
+  "/daily-sequence",
+  requireAuth,
+  jsonHandler(applicationService.getDailyApplicationSequence, {
+    logLabel: "Daily application sequence",
+  })
+);
 router.post(
   "/",
   requireAuth,

@@ -60,12 +60,7 @@ function App() {
   const jobBidStyle = currentUser?.jobBidStyle || "copy_generate";
 
   useEffect(() => {
-    if (
-      !isUser ||
-      !selectedProfile?.id ||
-      showProfiles ||
-      jobBidStyle === "build_resume"
-    ) {
+    if (!isUser || !selectedProfile?.id || showProfiles) {
       return;
     }
 

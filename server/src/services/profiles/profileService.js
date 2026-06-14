@@ -426,7 +426,7 @@ const listAllProfilesForAdmin = async (req) => {
         LEFT JOIN resume_templates
           ON resume_templates.id = profiles.resume_template_id
          AND resume_templates.is_active = true
-        ORDER BY profiles.created_at DESC
+        ORDER BY profiles.created_at ASC
       `
     );
   } else {
@@ -455,7 +455,7 @@ const listAllProfilesForAdmin = async (req) => {
          AND resume_templates.is_active = true
         WHERE users.account_type = 'user'
         AND users.approved_by_admin_id = $1
-        ORDER BY profiles.created_at DESC
+        ORDER BY profiles.created_at ASC
       `,
       [req.user.id]
     );

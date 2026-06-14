@@ -76,3 +76,9 @@ export function filterProfilesForUser(allProfiles, selectedUser) {
     (profile) => String(profile.user_id) === String(selectedUser.id)
   );
 }
+
+export function sortByCreatedAtAsc(items = []) {
+  return [...items].sort(
+    (a, b) => new Date(a.created_at) - new Date(b.created_at)
+  );
+}

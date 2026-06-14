@@ -361,6 +361,51 @@ const getProfileApplications = async (req) => {
   return { body: { applications: result.rows } };
 };
 
+const getDailyApplicationSequence = async (req) => {
+  const { profileId, dayStart, dayEnd } = req.query;
+
+  if (!profileId || !dayStart || !dayEnd) {
+    throw new HttpError(
+      400,
+      "profileId, dayStart, and dayEnd query parameters are required."
+    );
+  }
+
+  const profileCheck = await pool.query(
+    `
+      SELECT id
+      FROM profiles
+      WHERE id = $1 AND user_id = $2
+    `,
+    [profileId, req.user.id]
+  );
+
+  if (profileCheck.rows.length === 0) {
+    throw new HttpError(404, "Selected profile was not found.");
+  }
+
+  const countResult = await pool.query(
+    `
+      SELECT COUNT(*)::int AS count
+      FROM applications
+      WHERE profile_id = $1
+        AND user_id = $2
+        AND created_at >= $3::timestamptz
+        AND created_at < $4::timestamptz
+    `,
+    [profileId, req.user.id, dayStart, dayEnd]
+  );
+
+  const applicationsToday = countResult.rows[0]?.count || 0;
+
+  return {
+    body: {
+      sequenceNumber: applicationsToday + 1,
+      applicationsToday,
+    },
+  };
+};
+
 const createApplication = async (req) => {
   const { companyName, roleName, profileId } = req.body;
 
@@ -444,5 +489,6 @@ module.exports = {
   deleteProfileApplications,
   getProfileCounts,
   getProfileApplications,
+  getDailyApplicationSequence,
   createApplication,
 };

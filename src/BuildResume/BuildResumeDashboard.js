@@ -1,9 +1,28 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import AppShell from "../UI/AppShell";
 import Icon from "../UI/Icon";
 import IconButton from "../UI/IconButton";
+import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
+import { fetchProfileById } from "../Profile/api/profileApi";
+import {
+  fetchDailyApplicationSequence,
+  saveApplication,
+} from "../shared/api/applicationsApi";
 import { API_URL, getToken } from "../shared/api/client";
+import {
+  canUseFolderPicker,
+  changeCustomerRootFolder,
+  FOLDER_PICKER_REQUIRED_MESSAGE,
+  FOLDER_PICKER_USER_HINT,
+  getLocalDayBounds,
+  resolveCustomerRootFolder,
+  saveResumeToCustomerFolder,
+} from "../services/fileSystemSaveService";
+
+function getTemplateLabel(profile) {
+  return profile?.resume_template_name || "Default template";
+}
 
 function BuildResumeDashboard({
   user,
@@ -15,6 +34,34 @@ function BuildResumeDashboard({
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
+  const [saveFolderReady, setSaveFolderReady] = useState(canUseFolderPicker());
+  const [profile, setProfile] = useState(selectedProfile);
+
+  useEffect(() => {
+    setProfile(selectedProfile);
+  }, [selectedProfile]);
+
+  useEffect(() => {
+    if (!selectedProfile?.id) {
+      return;
+    }
+
+    let cancelled = false;
+
+    fetchProfileById(selectedProfile.id)
+      .then((fullProfile) => {
+        if (cancelled || !fullProfile) {
+          return;
+        }
+
+        setProfile(fullProfile);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProfile?.id]);
 
   const resetApplicationInputs = () => {
     setRoleName("");
@@ -22,8 +69,32 @@ function BuildResumeDashboard({
     setDescription("");
   };
 
+  const handleChangeSaveFolder = async () => {
+    if (!canUseFolderPicker()) {
+      alert(FOLDER_PICKER_REQUIRED_MESSAGE);
+      return;
+    }
+
+    try {
+      await changeCustomerRootFolder();
+      setSaveFolderReady(true);
+      alert(
+        "Save folder updated on your laptop/computer. Your next resume will be saved there."
+      );
+    } catch (error) {
+      if (
+        error?.name === "AbortError" ||
+        String(error?.message || "").toLowerCase().includes("aborted")
+      ) {
+        return;
+      }
+
+      alert(error.message || "Could not change save folder.");
+    }
+  };
+
   const handleBuildResume = async () => {
-    if (!selectedProfile?.id) {
+    if (!profile?.id) {
       alert("Please select a profile first.");
       return;
     }
@@ -33,10 +104,34 @@ function BuildResumeDashboard({
       return;
     }
 
+    if (!canUseFolderPicker()) {
+      alert(FOLDER_PICKER_REQUIRED_MESSAGE);
+      return;
+    }
+
+    const templateLabel = getTemplateLabel(profile);
+    const templateNote = profile.resume_template_id
+      ? "This is the template your admin assigned to your profile."
+      : "No custom template is assigned, so the admin default template will be used.";
+
+    const confirmed = window.confirm(
+      `Build resume with this admin template?\n\nTemplate: ${templateLabel}\n${templateNote}\n\nNext, choose a folder on your laptop/computer. The PDF will be saved there only.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    let rootDirectoryHandle = null;
+
     try {
       setLoading(true);
 
-      const response = await fetch(`${API_URL}/api/resume/build`, {
+      const folderSelection = await resolveCustomerRootFolder();
+      rootDirectoryHandle = folderSelection.handle;
+      setSaveFolderReady(true);
+
+      const response = await fetch(`${API_URL}/api/build-resume/from-profile`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -46,54 +141,68 @@ function BuildResumeDashboard({
           roleName: roleName.trim(),
           companyName: companyName.trim(),
           jobDescription: description.trim(),
-          profileId: selectedProfile.id,
+          profileId: profile.id,
         }),
       });
 
-      const contentType = response.headers.get("content-type");
+      const contentType = response.headers.get("content-type") || "";
 
-      if (contentType && contentType.includes("application/json")) {
+      if (contentType.includes("application/json")) {
         const result = await response.json();
-
-        if (!response.ok) {
-          throw new Error(result.message || "Could not build resume.");
-        }
-
-        alert(result.message || "Resume built successfully.");
-        resetApplicationInputs();
-        return;
+        throw new Error(result.message || "Could not build resume.");
       }
 
       if (!response.ok) {
         throw new Error("Could not build resume.");
       }
 
+      const templateNameFromServer =
+        response.headers.get("X-Resume-Template-Name") || templateLabel;
+      const usesDefaultTemplate =
+        response.headers.get("X-Resume-Uses-Default-Template") === "true";
+
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+      const arrayBuffer = await blob.arrayBuffer();
+      const pdfBytes = new Uint8Array(arrayBuffer);
 
-      const safeProfileName = (selectedProfile.name || "Profile")
-        .replace(/[^\w\s-]/g, "")
-        .trim()
-        .replace(/\s+/g, "_");
+      const { dayStart, dayEnd } = getLocalDayBounds();
+      const { sequenceNumber } = await fetchDailyApplicationSequence({
+        profileId: profile.id,
+        dayStart,
+        dayEnd,
+      });
 
-      const safeCompanyName = companyName
-        .replace(/[^\w\s-]/g, "")
-        .trim()
-        .replace(/\s+/g, "_");
+      const saveResult = await saveResumeToCustomerFolder({
+        pdfBytes,
+        profileName: profile.name || "Profile",
+        companyName: companyName.trim(),
+        roleName: roleName.trim(),
+        applicationNumber: sequenceNumber,
+        rootDirectoryHandle,
+      });
 
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${safeProfileName}_${safeCompanyName}_Resume.pdf`;
-
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      URL.revokeObjectURL(url);
+      await saveApplication({
+        profileId: profile.id,
+        roleName: roleName.trim(),
+        companyName: companyName.trim(),
+      });
 
       resetApplicationInputs();
+
+      alert(
+        `Resume saved to your laptop/computer!\n\nTemplate: ${templateNameFromServer}${
+          usesDefaultTemplate ? " (admin default)" : " (admin assigned)"
+        }\nPath: ${saveResult.savedPath || `${saveResult.dateFolder}/${saveResult.companyRoleFolder}/${saveResult.fileName}`}`
+      );
     } catch (error) {
-      alert(error.message);
+      if (
+        error?.name === "AbortError" ||
+        String(error?.message || "").toLowerCase().includes("aborted")
+      ) {
+        return;
+      }
+
+      alert(error.message || "Could not build resume.");
     } finally {
       setLoading(false);
     }
@@ -103,7 +212,7 @@ function BuildResumeDashboard({
     <AppShell
       kicker="Build Resume"
       title="Generate resume from profile"
-      subtitle="Paste a job description and let FRT build a tailored resume from your profile."
+      subtitle="Paste a job description, confirm your admin template, and save the PDF to a folder on your laptop or computer."
       user={user}
       selectedProfile={selectedProfile}
       onLogout={onLogout}
@@ -166,10 +275,40 @@ function BuildResumeDashboard({
             />
           </div>
 
+          <div className="build-template-confirm-note">
+            <Icon name="fileText" size={15} />
+            <div>
+              <strong>Admin template for this profile</strong>
+              <p>{getTemplateLabel(profile)}</p>
+              <span>
+                {profile?.resume_template_id
+                  ? "Assigned by your admin for this profile."
+                  : "No custom template assigned — admin default will be used."}
+              </span>
+            </div>
+          </div>
+
+          <div className="resume-save-folder-note">
+            <Icon name="folder" size={14} />
+            <p>
+              {saveFolderReady
+                ? "Saves to a folder on your laptop or computer."
+                : FOLDER_PICKER_USER_HINT}
+            </p>
+            <IconButton
+              icon="folder"
+              label="Change save folder"
+              variant="ghost"
+              size="sm"
+              disabled={loading}
+              onClick={handleChangeSaveFolder}
+            />
+          </div>
+
           <div className="fast-actions-row">
             <IconButton
               icon="wand"
-              label="Build resume"
+              label={loading ? "Building resume..." : "Build resume"}
               variant="primary"
               size="lg"
               loading={loading}
@@ -191,32 +330,12 @@ function BuildResumeDashboard({
           <div className="fast-section-title">
             <div>
               <span>Selected</span>
-              <h2>Profile</h2>
+              <h2>{profile?.name || "Profile"}</h2>
             </div>
           </div>
 
-          {selectedProfile ? (
-            <div className="build-profile-mini-grid">
-              <div>
-                <span>Name</span>
-                <strong>{selectedProfile.name || "-"}</strong>
-              </div>
-
-              <div>
-                <span>Location</span>
-                <strong>{selectedProfile.location || "-"}</strong>
-              </div>
-
-              <div>
-                <span>Phone</span>
-                <strong>{selectedProfile.phone || "-"}</strong>
-              </div>
-
-              <div>
-                <span>Email</span>
-                <strong>{selectedProfile.email || "-"}</strong>
-              </div>
-            </div>
+          {profile ? (
+            <ProfileReferencePanel profile={profile} />
           ) : (
             <div className="empty-profile-box">
               No profile selected. Please select a profile first.
