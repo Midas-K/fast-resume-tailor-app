@@ -69,6 +69,12 @@ export async function saveProfile({ editingProfileId, payload }) {
 
   invalidateCache(profilesPrefix);
   invalidateCache(`GET:${API_URL}/api/applications/profile-counts`);
+  if (editingProfileId) {
+    invalidateCache(`GET:${API_URL}/api/profiles/${editingProfileId}`);
+  }
+  if (result.profile?.id) {
+    invalidateCache(`GET:${API_URL}/api/profiles/${result.profile.id}`);
+  }
 
   return result;
 }
@@ -86,6 +92,7 @@ export async function deleteProfile(profileId) {
 
   invalidateCache(profilesPrefix);
   invalidateCache(`GET:${API_URL}/api/applications/profile-counts`);
+  invalidateCache(`GET:${API_URL}/api/profiles/${profileId}`);
 
   return result;
 }

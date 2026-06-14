@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "./App.css";
 
 import { ToastProvider } from "./UI/ToastProvider";
 import AppShell from "./UI/AppShell";
 import Icon from "./UI/Icon";
 import IconButton from "./UI/IconButton";
+import { fetchProfileById } from "./Profile/api/profileApi";
 
 import AuthPanel from "./Auth/AuthPanel";
 import AdminDashboard from "./Admin/AdminDashboard";
@@ -57,6 +58,34 @@ function App() {
     currentUser?.account_type === "user";
 
   const jobBidStyle = currentUser?.jobBidStyle || "copy_generate";
+
+  useEffect(() => {
+    if (
+      !isUser ||
+      !selectedProfile?.id ||
+      showProfiles ||
+      jobBidStyle === "build_resume"
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    fetchProfileById(selectedProfile.id)
+      .then((fullProfile) => {
+        if (cancelled || !fullProfile) {
+          return;
+        }
+
+        setSelectedProfile(fullProfile);
+        localStorage.setItem("rta_selected_profile", JSON.stringify(fullProfile));
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isUser, selectedProfile?.id, showProfiles, jobBidStyle]);
 
   const handleLogin = (loggedInUser) => {
     const normalizedUser = normalizeUser(loggedInUser);

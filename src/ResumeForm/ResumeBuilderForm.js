@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Icon from "../UI/Icon";
 import IconButton from "../UI/IconButton";
+import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
 import { API_URL, getToken } from "../shared/api/client";
 import { parseJsonField } from "../shared/utils/format";
 import {
@@ -24,6 +25,7 @@ function ResumeBuilderForm({
   const [loading, setLoading] = useState(false);
 
   const resumeSections = [
+    { id: "profile", label: "Profile" },
     { id: "summary", label: "Summary" },
     { id: "skills", label: "Skills" },
     { id: "experience", label: "Experience" },
@@ -52,7 +54,7 @@ function ResumeBuilderForm({
 
     setExperienceInputs(mappedExperience);
     setActiveExperienceIndex(0);
-    setActiveSection("summary");
+    setActiveSection("profile");
   }, [selectedProfile]);
 
   const updateExperienceDetails = (index, value) => {
@@ -269,7 +271,8 @@ function ResumeBuilderForm({
         <div className="resume-meta-strip">
           <strong>{selectedProfile.name}</strong>
           <span>
-            {selectedProfile.resume_template_name || "Default template"}
+            {parseJsonField(selectedProfile.experience).length} experience ·{" "}
+            {parseJsonField(selectedProfile.education).length} education
           </span>
         </div>
       )}
@@ -358,6 +361,10 @@ function ResumeBuilderForm({
             </div>
 
             <div className="resume-paste-pane">
+              {activeSection === "profile" && (
+                <ProfileReferencePanel profile={selectedProfile} />
+              )}
+
               {activeSection === "summary" && (
                 <div className="resume-input-group">
                   <label htmlFor="summary">Summary *</label>
