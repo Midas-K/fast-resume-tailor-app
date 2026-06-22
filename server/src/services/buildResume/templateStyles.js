@@ -9,7 +9,23 @@ const PLACEHOLDER_MARKERS = {
   EXPERIENCE: "@EXPERIENCE",
 };
 
+const getParagraphText = (paragraphXml) => {
+  return (paragraphXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
+    .map((token) => token.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
+    .join("");
+};
+
 const findParagraphXmlContaining = (xml, marker) => {
+  const paragraphs = xml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+
+  for (const paragraphXml of paragraphs) {
+    const text = getParagraphText(paragraphXml);
+
+    if (text.includes(marker) || text.replace(/\s/g, "").includes(marker)) {
+      return paragraphXml;
+    }
+  }
+
   const idx = xml.indexOf(marker);
   if (idx < 0) {
     return "";
@@ -33,24 +49,98 @@ const extractPPrInner = (paragraphXml) => {
   return match ? match[1].trim() : "";
 };
 
-const extractBaseRPr = (paragraphXml) => {
-  const pPrInner = extractPPrInner(paragraphXml);
-  const fromParagraphDefault = pPrInner.match(/<w:rPr>([\s\S]*?)<\/w:rPr>/);
+const extractRPrContent = (xmlFragment) => {
+  const match = xmlFragment.match(/<w:rPr>([\s\S]*?)<\/w:rPr>/);
+  return match ? match[1].trim() : "";
+};
 
-  if (fromParagraphDefault && fromParagraphDefault[1].trim()) {
-    return fromParagraphDefault[1].trim();
-  }
+const mergeRunProperties = (primary = "", secondary = "") => {
+  let merged = primary || secondary || "";
 
-  const runs = paragraphXml.match(/<w:r[\s\S]*?<\/w:r>/g) || [];
+  if (primary && secondary) {
+    merged = primary;
 
-  for (const run of runs) {
-    const rPr = run.match(/<w:rPr>([\s\S]*?)<\/w:rPr>/);
-    if (rPr && rPr[1].trim()) {
-      return rPr[1].trim();
+    if (secondary.includes("<w:b") && !merged.includes("<w:b")) {
+      merged += "<w:b/>";
+    }
+
+    if (secondary.includes("<w:i") && !merged.includes("<w:i")) {
+      merged += "<w:i/>";
+    }
+
+    if (secondary.includes("<w:u ") && !merged.includes("<w:u")) {
+      const underline = secondary.match(/<w:u[^/]*\/>/);
+      if (underline) {
+        merged += underline[0];
+      }
+    }
+
+    if (!merged.includes("<w:sz") && secondary.includes("<w:sz")) {
+      const size = secondary.match(/<w:sz[^/]*\/>/);
+      if (size) {
+        merged += size[0];
+      }
+    }
+
+    if (!merged.includes("<w:szCs") && secondary.includes("<w:szCs")) {
+      const sizeCs = secondary.match(/<w:szCs[^/]*\/>/);
+      if (sizeCs) {
+        merged += sizeCs[0];
+      }
+    }
+
+    if (!merged.includes("<w:rFonts") && secondary.includes("<w:rFonts")) {
+      const fonts = secondary.match(/<w:rFonts[^/]*\/>/);
+      if (fonts) {
+        merged = fonts[0] + merged;
+      }
+    }
+
+    if (!merged.includes("<w:color") && secondary.includes("<w:color")) {
+      const color = secondary.match(/<w:color[^/]*\/>/);
+      if (color) {
+        merged += color[0];
+      }
     }
   }
 
-  return "";
+  return normalizeRunProperties(merged);
+};
+
+const normalizeRunProperties = (rPr = "") => {
+  return rPr
+    .replace(/\s*w:themeColor="[^"]*"/g, "")
+    .replace(/\s*w:themeTint="[^"]*"/g, "")
+    .replace(/\s*w:themeShade="[^"]*"/g, "")
+    .trim();
+};
+
+const extractBaseRPr = (paragraphXml) => {
+  const pPrInner = extractPPrInner(paragraphXml);
+  const pPrRPr = extractRPrContent(pPrInner);
+
+  const runs = paragraphXml.match(/<w:r[\s\S]*?<\/w:r>/g) || [];
+  let runRPr = "";
+
+  for (const run of runs) {
+    const content = extractRPrContent(run);
+    if (content) {
+      runRPr = content;
+      break;
+    }
+  }
+
+  return mergeRunProperties(pPrRPr, runRPr);
+};
+
+const normalizePPrInner = (pPrInner = "") => {
+  if (!pPrInner) {
+    return pPrInner;
+  }
+
+  return pPrInner.replace(/<w:rPr>([\s\S]*?)<\/w:rPr>/g, (match, content) => {
+    return `<w:rPr>${normalizeRunProperties(content)}</w:rPr>`;
+  });
 };
 
 const extractPlaceholderStyles = (templateBuffer) => {
@@ -90,4 +180,6 @@ const extractPlaceholderStyles = (templateBuffer) => {
 
 module.exports = {
   extractPlaceholderStyles,
+  normalizeRunProperties,
+  normalizePPrInner,
 };

@@ -6,7 +6,7 @@ const PizZip = require("pizzip");
 const Docxtemplater = require("docxtemplater");
 const pool = require("../../db");
 const { parseJsonField } = require("../../utils/parse");
-const { extractPlaceholderStyles } = require("./templateStyles");
+const { extractPlaceholderStyles, normalizePPrInner, normalizeRunProperties } = require("./templateStyles");
 
 const DOCX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -166,7 +166,7 @@ const createXmlBuilders = (templateStyles = {}) => {
   };
 
   const makeRunXml = ({ text, bold = false, styleKey = "SUMMARY" }) => {
-    const baseRPr = getStyle(styleKey).baseRPr || "";
+    const baseRPr = getNormalizedRPr(styleKey);
     const rPr = mergeBoldIntoRPr(baseRPr, bold);
 
     return `
@@ -182,13 +182,52 @@ const createXmlBuilders = (templateStyles = {}) => {
       return pPrInner;
     }
 
-    return pPrInner.replace(/<w:tabs>[\s\S]*?<\/w:tabs>/g, "").trim();
+    let cleaned = pPrInner.replace(/<w:tabs>[\s\S]*?<\/w:tabs>/g, "").trim();
+    cleaned = cleaned.replace(/<w:ind[^/]*\/>/g, "").trim();
+
+    // Bullet + 2 spaces: hang wrapped lines under the text, not the page margin.
+    const bulletIndent = '<w:ind w:left="360" w:hanging="360"/>';
+
+    if (!cleaned.includes("<w:ind")) {
+      cleaned = `${cleaned}${bulletIndent}`;
+    }
+
+    return cleaned;
   };
 
   const BULLET_GAP = "  ";
 
+  const getNormalizedRPr = (styleKey) => {
+    let rPr = normalizeRunProperties(getStyle(styleKey).baseRPr || "");
+
+    if (!/<w:sz/.test(rPr)) {
+      const summaryRPr = normalizeRunProperties(getStyle("SUMMARY").baseRPr || "");
+      const size = summaryRPr.match(/<w:sz[^/]*\/>/);
+      const sizeCs = summaryRPr.match(/<w:szCs[^/]*\/>/);
+
+      if (size) {
+        rPr += size[0];
+      }
+
+      if (sizeCs) {
+        rPr += sizeCs[0];
+      }
+    }
+
+    if (!/<w:rFonts/.test(rPr)) {
+      const summaryRPr = normalizeRunProperties(getStyle("SUMMARY").baseRPr || "");
+      const fonts = summaryRPr.match(/<w:rFonts[^/]*\/>/);
+
+      if (fonts) {
+        rPr = fonts[0] + rPr;
+      }
+    }
+
+    return rPr;
+  };
+
   const makeBulletPrefixedRuns = ({ text, styleKey }) => {
-    const baseRPr = getStyle(styleKey).baseRPr || "";
+    const baseRPr = getNormalizedRPr(styleKey);
 
     return `
     <w:r>
@@ -236,7 +275,7 @@ const createXmlBuilders = (templateStyles = {}) => {
           });
 
           if (useTextBullet && index === 0) {
-            const baseRPr = getStyle(styleKey).baseRPr || "";
+            const baseRPr = getNormalizedRPr(styleKey);
 
             return `
     <w:r>
@@ -251,11 +290,11 @@ const createXmlBuilders = (templateStyles = {}) => {
     }
 
     let pPrContent = templatePPr
-      ? templatePPr
+      ? normalizePPrInner(templatePPr)
       : buildFallbackPPrContent({ bullet, justify });
 
     if (useTextBullet && templatePPr) {
-      pPrContent = compactBulletPPr(templatePPr);
+      pPrContent = compactBulletPPr(normalizePPrInner(templatePPr));
     }
 
     return `
