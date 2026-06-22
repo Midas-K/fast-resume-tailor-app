@@ -10,8 +10,10 @@ const {
   extractTemplateStyleMap,
   getSectionStyles,
   mergeTemplateRunProperties,
-  mergeTemplatePPrWithBullets,
+  cleanTemplatePPrForBulletLine,
 } = require("./docxTemplateStyles");
+
+const BULLET_CHAR = "\u2022";
 
 const DOCX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -158,11 +160,35 @@ const makeParagraphXml = ({
 
   const templatePPr = sectionStyles?.pPr || "";
   const templateRPr = sectionStyles?.rPr || "";
-  const usesTemplateNumbering = Boolean(sectionStyles?.usesNumbering);
 
   const segments = bold === true
     ? [{ text: cleanText, bold: true }]
     : parseBoldSegments(cleanText, { boldBeforeColon });
+
+  if (bullet) {
+    const pPrBlock = cleanTemplatePPrForBulletLine(templatePPr, justify);
+    const bulletRun = makeRunXml({
+      text: `${BULLET_CHAR} `,
+      bold: null,
+      templateRPr,
+    });
+    const textRuns = segments
+      .map((segment) =>
+        makeRunXml({
+          text: segment.text,
+          bold: segment.bold ? true : bold === false ? false : null,
+          templateRPr,
+        })
+      )
+      .join("");
+
+    return `
+    <w:p>
+      ${pPrBlock}
+      ${bulletRun}${textRuns}
+    </w:p>
+  `;
+  }
 
   const bodyRuns = segments
     .map((segment) =>
@@ -175,17 +201,9 @@ const makeParagraphXml = ({
     .join("");
 
   if (templatePPr) {
-    let pPrBlock = templatePPr;
-
-    if (bullet && !usesTemplateNumbering) {
-      pPrBlock = mergeTemplatePPrWithBullets(templatePPr, {
-        numId: BULLET_NUM_ID,
-      });
-    }
-
     return `
     <w:p>
-      ${pPrBlock}
+      ${templatePPr}
       ${bodyRuns}
     </w:p>
   `;
@@ -194,18 +212,6 @@ const makeParagraphXml = ({
   return `
     <w:p>
       <w:pPr>
-        ${
-          bullet
-            ? `
-        <w:pStyle w:val="ListParagraph"/>
-        <w:numPr>
-          <w:ilvl w:val="0"/>
-          <w:numId w:val="${BULLET_NUM_ID}"/>
-        </w:numPr>
-        <w:ind w:left="0" w:hanging="360"/>
-        `
-            : ""
-        }
         ${justify ? '<w:jc w:val="both"/>' : ""}
         <w:spacing w:after="80"/>
       </w:pPr>

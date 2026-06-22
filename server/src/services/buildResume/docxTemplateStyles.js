@@ -259,19 +259,12 @@ const getSectionStyles = (styleMap, key, fallbackKey) => {
   };
 };
 
-const mergeTemplatePPrWithBullets = (templatePPr, { numId = "99" } = {}) => {
-  const leftIndent = 0;
-  const hangingIndent = 360;
-
+const cleanTemplatePPrForBulletLine = (templatePPr, justify = true) => {
   if (!templatePPr) {
     return `
       <w:pPr>
-        <w:pStyle w:val="ListParagraph"/>
-        <w:numPr>
-          <w:ilvl w:val="0"/>
-          <w:numId w:val="${numId}"/>
-        </w:numPr>
-        <w:ind w:left="${leftIndent}" w:hanging="${hangingIndent}"/>
+        ${justify ? '<w:jc w:val="both"/>' : ""}
+        <w:spacing w:after="80"/>
       </w:pPr>
     `;
   }
@@ -287,21 +280,12 @@ const mergeTemplatePPrWithBullets = (templatePPr, { numId = "99" } = {}) => {
   inner = inner.replace(/<w:pStyle[^>]*>[\s\S]*?<\/w:pStyle>/g, "");
   inner = inner.replace(/<w:ind[^>]*\/>/g, "");
 
-  const bulletBlock = `
-    <w:pStyle w:val="ListParagraph"/>
-    <w:numPr>
-      <w:ilvl w:val="0"/>
-      <w:numId w:val="${numId}"/>
-    </w:numPr>
-    <w:ind w:left="${leftIndent}" w:hanging="${hangingIndent}"/>
-  `;
-
-  return `<w:pPr>${bulletBlock}${inner}</w:pPr>`;
+  return `<w:pPr>${inner}</w:pPr>`;
 };
 
 module.exports = {
   extractTemplateStyleMap,
   getSectionStyles,
   mergeTemplateRunProperties,
-  mergeTemplatePPrWithBullets,
+  cleanTemplatePPrForBulletLine,
 };
