@@ -259,12 +259,10 @@ const getSectionStyles = (styleMap, key, fallbackKey) => {
   };
 };
 
-const extractTabPosition = (pPrBlock = "") => {
-  const match = String(pPrBlock || "").match(/w:pos="(\d+)"/);
-  return match ? Number(match[1]) : null;
-};
-
 const mergeTemplatePPrWithBullets = (templatePPr, { numId = "99" } = {}) => {
+  const leftIndent = 0;
+  const hangingIndent = 360;
+
   if (!templatePPr) {
     return `
       <w:pPr>
@@ -273,7 +271,7 @@ const mergeTemplatePPrWithBullets = (templatePPr, { numId = "99" } = {}) => {
           <w:ilvl w:val="0"/>
           <w:numId w:val="${numId}"/>
         </w:numPr>
-        <w:ind w:left="360" w:hanging="180"/>
+        <w:ind w:left="${leftIndent}" w:hanging="${hangingIndent}"/>
       </w:pPr>
     `;
   }
@@ -288,10 +286,6 @@ const mergeTemplatePPrWithBullets = (templatePPr, { numId = "99" } = {}) => {
   inner = inner.replace(/<w:pStyle[^>]*\/>/g, "");
   inner = inner.replace(/<w:pStyle[^>]*>[\s\S]*?<\/w:pStyle>/g, "");
   inner = inner.replace(/<w:ind[^>]*\/>/g, "");
-
-  const tabPos = extractTabPosition(templatePPr);
-  const leftIndent = tabPos || 360;
-  const hangingIndent = tabPos ? Math.max(180, Math.round(tabPos * 0.42)) : 180;
 
   const bulletBlock = `
     <w:pStyle w:val="ListParagraph"/>

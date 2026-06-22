@@ -202,7 +202,7 @@ const makeParagraphXml = ({
           <w:ilvl w:val="0"/>
           <w:numId w:val="${BULLET_NUM_ID}"/>
         </w:numPr>
-        <w:ind w:left="360" w:hanging="180"/>
+        <w:ind w:left="0" w:hanging="360"/>
         `
             : ""
         }
@@ -541,7 +541,7 @@ const ensureBulletNumberingXml = (zip) => {
         <w:tabs>
           <w:tab w:val="num" w:pos="360"/>
         </w:tabs>
-        <w:ind w:left="360" w:hanging="180"/>
+        <w:ind w:left="0" w:hanging="360"/>
       </w:pPr>
       <w:rPr>
         <w:rFonts w:ascii="Symbol" w:hAnsi="Symbol" w:hint="default"/>
