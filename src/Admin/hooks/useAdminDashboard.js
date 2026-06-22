@@ -96,16 +96,21 @@ export function useAdminDashboard() {
     setProfileApplicationCounts(buildProfileCountMap(counts));
   };
 
-  const loadAllProfilesData = async () => {
+  const loadAllProfilesData = async ({ silent = false } = {}) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
+
       const nextProfiles = await fetchAllProfiles();
       setAllProfiles(nextProfiles);
       setProfilesLoaded(true);
     } catch (error) {
       alert(error.message);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -125,6 +130,28 @@ export function useAdminDashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const resolveTemplateAssignment = (resumeTemplateId, templates) => {
+    if (!resumeTemplateId) {
+      const defaultTemplate = templates.find((item) => item.is_default);
+
+      return {
+        resume_template_id: null,
+        resume_template_name: defaultTemplate?.name || "Default template",
+        resume_template_file_name: defaultTemplate?.file_name || null,
+      };
+    }
+
+    const assignedTemplate = templates.find(
+      (item) => String(item.id) === String(resumeTemplateId)
+    );
+
+    return {
+      resume_template_id: resumeTemplateId,
+      resume_template_name: assignedTemplate?.name || "Custom template",
+      resume_template_file_name: assignedTemplate?.file_name || null,
+    };
   };
 
   const loadResumeTemplates = async () => {
@@ -214,7 +241,22 @@ export function useAdminDashboard() {
         fileInput.value = "";
       }
 
-      await loadResumeTemplates();
+      if (result.template) {
+        setResumeTemplates((current) => {
+          let next = [...current, result.template];
+
+          if (result.template.is_default) {
+            next = next.map((item) => ({
+              ...item,
+              is_default: String(item.id) === String(result.template.id),
+            }));
+          }
+
+          return sortResumeTemplatesForAdmin(next);
+        });
+      } else {
+        void loadResumeTemplates();
+      }
     } catch (error) {
       alert(error.message);
     } finally {
@@ -223,11 +265,21 @@ export function useAdminDashboard() {
   };
 
   const handleSetDefaultResumeTemplate = async (templateId) => {
+    const previousTemplates = resumeTemplates;
+
+    setResumeTemplates((current) =>
+      sortResumeTemplatesForAdmin(
+        current.map((item) => ({
+          ...item,
+          is_default: String(item.id) === String(templateId),
+        }))
+      )
+    );
+
     try {
-      const result = await setDefaultResumeTemplate(templateId);
-      alert(result.message || "Default template updated.");
-      await refreshAll();
+      await setDefaultResumeTemplate(templateId);
     } catch (error) {
+      setResumeTemplates(previousTemplates);
       alert(error.message);
     }
   };
@@ -236,23 +288,27 @@ export function useAdminDashboard() {
     const confirmed = window.confirm("Remove this resume template?");
     if (!confirmed) return;
 
+    const previousTemplates = resumeTemplates;
+
+    setResumeTemplates((current) =>
+      current.filter((item) => String(item.id) !== String(templateId))
+    );
+
+    const previousUrl = templatePreviewUrlsRef.current[templateId];
+    if (previousUrl) {
+      URL.revokeObjectURL(previousUrl);
+    }
+
+    const updatedPreviewUrls = { ...templatePreviewUrlsRef.current };
+    delete updatedPreviewUrls[templateId];
+
+    templatePreviewUrlsRef.current = updatedPreviewUrls;
+    setTemplatePreviewUrls(updatedPreviewUrls);
+
     try {
-      const result = await deleteResumeTemplate(templateId);
-      alert(result.message || "Resume template removed.");
-
-      const previousUrl = templatePreviewUrlsRef.current[templateId];
-      if (previousUrl) {
-        URL.revokeObjectURL(previousUrl);
-      }
-
-      const updatedPreviewUrls = { ...templatePreviewUrlsRef.current };
-      delete updatedPreviewUrls[templateId];
-
-      templatePreviewUrlsRef.current = updatedPreviewUrls;
-      setTemplatePreviewUrls(updatedPreviewUrls);
-
-      await refreshAll();
+      await deleteResumeTemplate(templateId);
     } catch (error) {
+      setResumeTemplates(previousTemplates);
       alert(error.message);
     }
   };
@@ -261,26 +317,48 @@ export function useAdminDashboard() {
     profileId,
     resumeTemplateId
   ) => {
+    const previousProfiles = allProfiles;
+    const assignment = resolveTemplateAssignment(
+      resumeTemplateId,
+      resumeTemplates
+    );
+
+    setAllProfiles((current) =>
+      current.map((profile) =>
+        String(profile.id) === String(profileId)
+          ? {
+              ...profile,
+              ...assignment,
+            }
+          : profile
+      )
+    );
+
     try {
-      const result = await updateProfileResumeTemplate(
-        profileId,
-        resumeTemplateId
-      );
-      alert(result.message || "Resume template updated.");
-      await loadAdminData();
+      await updateProfileResumeTemplate(profileId, resumeTemplateId);
     } catch (error) {
+      setAllProfiles(previousProfiles);
       alert(error.message);
     }
   };
 
   const handleUpdateApproval = async (userId, isApproved) => {
+    const previousUsers = users;
+
+    setUsers((current) =>
+      current.map((item) =>
+        String(item.id) === String(userId)
+          ? { ...item, is_approved: isApproved }
+          : item
+      )
+    );
+
     try {
       const result = await updateUserApproval(userId, isApproved);
       alert(result.message);
-      await loadAdminData();
     } catch (error) {
+      setUsers(previousUsers);
       alert(error.message);
-      await loadAdminData();
     }
   };
 
@@ -322,11 +400,25 @@ export function useAdminDashboard() {
   };
 
   const handleUpdateJobBidStyle = async (userId, style) => {
+    const previousUsers = users;
+
+    setUsers((current) =>
+      current.map((item) =>
+        String(item.id) === String(userId)
+          ? {
+              ...item,
+              job_bid_style: style,
+              jobBidStyle: style,
+            }
+          : item
+      )
+    );
+
     try {
       await updateUserJobBidStyle(userId, style);
       alert("Job-bid style updated.");
-      await loadAdminData();
     } catch (error) {
+      setUsers(previousUsers);
       alert(error.message);
     }
   };
@@ -348,6 +440,8 @@ export function useAdminDashboard() {
       return;
     }
 
+    const previousProfiles = allProfiles;
+
     try {
       const text = await file.text();
 
@@ -356,10 +450,18 @@ export function useAdminDashboard() {
         return;
       }
 
+      setAllProfiles((current) =>
+        current.map((profile) =>
+          String(profile.id) === String(profileId)
+            ? { ...profile, admin_prompt: text }
+            : profile
+        )
+      );
+
       await saveProfilePrompt(profileId, text);
       alert("Prompt uploaded and updated.");
-      await loadAdminData();
     } catch (error) {
+      setAllProfiles(previousProfiles);
       alert(error.message);
     }
   };
@@ -371,11 +473,21 @@ export function useAdminDashboard() {
 
     if (!confirmed) return;
 
+    const previousProfiles = allProfiles;
+
+    setAllProfiles((current) =>
+      current.map((profile) =>
+        String(profile.id) === String(profileId)
+          ? { ...profile, admin_prompt: "" }
+          : profile
+      )
+    );
+
     try {
       await saveProfilePrompt(profileId, "");
       alert("Prompt removed. This profile will use the sample prompt.");
-      await loadAdminData();
     } catch (error) {
+      setAllProfiles(previousProfiles);
       alert(error.message);
     }
   };
@@ -499,6 +611,8 @@ export function useAdminDashboard() {
 
   useEffect(() => {
     loadAdminData();
+    loadResumeTemplates();
+    loadAllProfilesData({ silent: true });
 
     return () => {
       Object.values(templatePreviewUrlsRef.current).forEach((url) => {
@@ -571,6 +685,7 @@ export function useAdminDashboard() {
     setActiveSection,
     applicationDashboardMode,
     loading,
+    profilesLoaded,
     users: sortedUsers,
     profileApplicationCounts,
     allProfiles: sortedAllProfiles,

@@ -13,23 +13,34 @@ const invalidateAdminReads = () => {
   invalidateCache(`GET:${API_URL}/api/resume-templates`);
 };
 
+const templatePreviewBlobCache = new Map();
+
+export const invalidateTemplatePreviewCache = (templateId = null) => {
+  if (!templateId) {
+    templatePreviewBlobCache.clear();
+    return;
+  }
+
+  templatePreviewBlobCache.delete(String(templateId));
+};
+
 export async function fetchAdminUsers() {
   const url = `${API_URL}/api/auth/users`;
-  const result = await cachedJsonGet(url, { headers: authHeaders() });
+  const result = await cachedJsonGet(url, { headers: authHeaders() }, 120_000);
 
   return result.users || [];
 }
 
 export async function fetchAdminProfileCounts() {
   const url = `${API_URL}/api/applications/admin/profile-counts`;
-  const result = await cachedJsonGet(url, { headers: authHeaders() }, 15_000);
+  const result = await cachedJsonGet(url, { headers: authHeaders() }, 120_000);
 
   return result.counts || [];
 }
 
 export async function fetchAdminProfileApplications(profileId) {
   const url = `${API_URL}/api/applications/admin/profile/${profileId}/applications`;
-  const result = await cachedJsonGet(url, { headers: authHeaders() }, 15_000);
+  const result = await cachedJsonGet(url, { headers: authHeaders() }, 120_000);
 
   return result.applications || [];
 }
@@ -48,19 +59,26 @@ export async function fetchAdminApplications() {
 
 export async function fetchAllProfiles() {
   const url = `${API_URL}/api/profiles/admin/all`;
-  const result = await cachedJsonGet(url, { headers: authHeaders() }, 15_000);
+  const result = await cachedJsonGet(url, { headers: authHeaders() }, 120_000);
 
   return result.profiles || [];
 }
 
 export async function fetchResumeTemplates() {
   const url = `${API_URL}/api/resume-templates`;
-  const result = await cachedJsonGet(url, { headers: authHeaders() }, 15_000);
+  const result = await cachedJsonGet(url, { headers: authHeaders() }, 120_000);
 
   return result.templates || [];
 }
 
 export async function fetchTemplatePreviewBlob(templateId) {
+  const cacheKey = String(templateId);
+  const cachedBlob = templatePreviewBlobCache.get(cacheKey);
+
+  if (cachedBlob) {
+    return cachedBlob;
+  }
+
   const url = `${API_URL}/api/resume-templates/${templateId}/preview-pdf`;
   const response = await fetch(url, { headers: authHeaders() });
 
@@ -69,7 +87,10 @@ export async function fetchTemplatePreviewBlob(templateId) {
     throw new Error(result?.message || "Could not load template preview.");
   }
 
-  return response.blob();
+  const blob = await response.blob();
+  templatePreviewBlobCache.set(cacheKey, blob);
+
+  return blob;
 }
 
 export async function uploadResumeTemplate(formData) {
@@ -100,6 +121,9 @@ export async function uploadResumeTemplate(formData) {
     throw new Error(details);
   }
 
+  invalidateCache(`GET:${API_URL}/api/resume-templates`);
+  invalidateTemplatePreviewCache();
+
   return result;
 }
 
@@ -114,6 +138,9 @@ export async function setDefaultResumeTemplate(templateId) {
   if (!response.ok) {
     throw new Error(result.message || "Could not set default template.");
   }
+
+  invalidateCache(`GET:${API_URL}/api/resume-templates`);
+  invalidateTemplatePreviewCache();
 
   return result;
 }
@@ -130,6 +157,9 @@ export async function deleteResumeTemplate(templateId) {
     throw new Error(result.message || "Could not remove template.");
   }
 
+  invalidateCache(`GET:${API_URL}/api/resume-templates`);
+  invalidateTemplatePreviewCache(templateId);
+
   return result;
 }
 
@@ -145,6 +175,8 @@ export async function updateProfileResumeTemplate(profileId, resumeTemplateId) {
   if (!response.ok) {
     throw new Error(result.message || "Could not update resume template.");
   }
+
+  invalidateCache(`GET:${API_URL}/api/profiles/admin/all`);
 
   return result;
 }

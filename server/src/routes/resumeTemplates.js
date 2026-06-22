@@ -17,6 +17,24 @@ const {
 } = require("../services/resumeTemplates/templateDocx");
 const templateService = require("../services/resumeTemplates/templateService");
 
+const previewPdfCache = new Map();
+
+const getCachedPreviewPdf = (templateId) =>
+  previewPdfCache.get(String(templateId));
+
+const setCachedPreviewPdf = (templateId, pdfBuffer) => {
+  previewPdfCache.set(String(templateId), pdfBuffer);
+};
+
+const clearPreviewPdfCache = (templateId = null) => {
+  if (!templateId) {
+    previewPdfCache.clear();
+    return;
+  }
+
+  previewPdfCache.delete(String(templateId));
+};
+
 const router = express.Router();
 
 const upload = multer({
@@ -91,6 +109,20 @@ router.get(
         });
       }
 
+      const cachedPdf = getCachedPreviewPdf(templateId);
+
+      if (cachedPdf) {
+        const baseFileName = `template_preview_${template.id}`;
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          `inline; filename="${baseFileName}.pdf"`
+        );
+
+        return res.send(cachedPdf);
+      }
+
       const docxBuffer = makePreviewDocxBuffer(template.file_data);
 
       tempDir = await fs.mkdtemp(
@@ -105,6 +137,8 @@ router.get(
       await runLibreOfficeConvertForPreview(docxPath, tempDir);
 
       const pdfBuffer = await fs.readFile(pdfPath);
+
+      setCachedPreviewPdf(templateId, pdfBuffer);
 
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(
@@ -203,6 +237,8 @@ router.post(
         uploadedByAdminId: req.user.id,
       });
 
+      clearPreviewPdfCache();
+
       return res.status(201).json({
         message: "DOCX resume template uploaded successfully.",
         template,
@@ -267,6 +303,8 @@ router.delete("/:templateId", requireAuth, requireAdmin, async (req, res) => {
         message: "Resume template not found.",
       });
     }
+
+    clearPreviewPdfCache(templateId);
 
     return res.json({
       message: "Resume template removed.",

@@ -22,7 +22,10 @@ function AdminDashboard({ user, onLogout }) {
     }
 
     if (section === "profiles") {
-      admin.loadAllProfilesData();
+      Promise.all([
+        admin.loadAllProfilesData({ silent: admin.profilesLoaded }),
+        admin.loadResumeTemplates(),
+      ]);
     }
   };
 

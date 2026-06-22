@@ -6,7 +6,7 @@ const profilesPrefix = `GET:${API_URL}/api/profiles`;
 export async function fetchProfiles() {
   const result = await cachedJsonGet(`${API_URL}/api/profiles`, {
     headers: authHeaders(),
-  });
+  }, 120_000);
 
   return result.profiles || [];
 }
@@ -15,7 +15,7 @@ export async function fetchProfileById(profileId) {
   const result = await cachedJsonGet(
     `${API_URL}/api/profiles/${profileId}`,
     { headers: authHeaders() },
-    15_000
+    120_000
   );
 
   return result.profile;
@@ -25,7 +25,7 @@ export async function fetchProfileApplicationCounts() {
   const result = await cachedJsonGet(
     `${API_URL}/api/applications/profile-counts`,
     { headers: authHeaders() },
-    15_000
+    120_000
   );
 
   return result.counts || [];
@@ -35,7 +35,7 @@ export async function fetchProfileApplications(profileId) {
   const result = await cachedJsonGet(
     `${API_URL}/api/applications/profile/${profileId}`,
     { headers: authHeaders() },
-    15_000
+    120_000
   );
 
   return result.applications || [];

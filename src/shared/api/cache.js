@@ -1,5 +1,5 @@
 const cache = new Map();
-const DEFAULT_TTL_MS = 30_000;
+const DEFAULT_TTL_MS = 120_000;
 
 export function getCached(key) {
   const entry = cache.get(key);

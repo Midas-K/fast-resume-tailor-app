@@ -52,6 +52,25 @@ export function useProfileManager(user) {
     }));
   };
 
+  const refreshProfileCounts = async () => {
+    try {
+      const counts = await fetchProfileApplicationCounts();
+      const countMap = {};
+
+      counts.forEach((item) => {
+        countMap[String(item.profile_id)] = {
+          whole_application_count: item.whole_application_count || 0,
+          most_recent_application_count:
+            item.most_recent_application_count || 0,
+        };
+      });
+
+      setProfileApplicationCounts(countMap);
+    } catch (error) {
+      console.error("Profile count refresh failed:", error.message);
+    }
+  };
+
   const refreshProfileData = async () => {
     try {
       const [nextProfiles, counts] = await Promise.all([
@@ -301,7 +320,7 @@ export function useProfileManager(user) {
     const isEditing = Boolean(editingProfileId);
 
     try {
-      await saveProfileApi({
+      const result = await saveProfileApi({
         editingProfileId,
         payload: {
           name: name.trim(),
@@ -321,6 +340,28 @@ export function useProfileManager(user) {
         },
       });
 
+      const savedProfile = result.profile;
+
+      if (savedProfile) {
+        setProfiles((current) => {
+          if (isEditing) {
+            return current.map((item) =>
+              String(item.id) === String(savedProfile.id)
+                ? { ...item, ...savedProfile }
+                : item
+            );
+          }
+
+          return [savedProfile, ...current];
+        });
+
+        if (!isEditing) {
+          void refreshProfileCounts();
+        }
+      } else {
+        void refreshProfileData();
+      }
+
       alert(
         isEditing
           ? "Profile updated!"
@@ -328,7 +369,6 @@ export function useProfileManager(user) {
       );
 
       resetForm();
-      await refreshProfileData();
     } catch (error) {
       alert(error.message);
     }
@@ -345,8 +385,12 @@ export function useProfileManager(user) {
         resetForm();
       }
 
+      setProfiles((current) =>
+        current.filter((item) => String(item.id) !== String(profileId))
+      );
+      void refreshProfileCounts();
+
       alert("Profile removed.");
-      await refreshProfileData();
     } catch (error) {
       alert(error.message);
     }

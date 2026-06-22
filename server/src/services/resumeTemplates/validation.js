@@ -1,13 +1,8 @@
-const fs = require("fs/promises");
-const path = require("path");
-const os = require("os");
 const PizZip = require("pizzip");
 const { findSplitPlaceholders } = require("../buildResume/docxPlaceholderRepair");
 const {
   DOCX_MIME_TYPE,
   extractTextFromDocxBuffer,
-  makePreviewDocxBuffer,
-  runLibreOfficeConvertForPreview,
 } = require("./templateDocx");
 
 const isDocxFile = (file) => {
@@ -196,8 +191,6 @@ const getDocxtemplaterErrorMessages = (error) => {
 };
 
 const validateTemplateBeforeUpload = async (templateBuffer) => {
-  let tempDir = null;
-
   try {
     const extracted = extractTextFromDocxBuffer(templateBuffer);
 
@@ -234,17 +227,6 @@ const validateTemplateBeforeUpload = async (templateBuffer) => {
       };
     }
 
-    const docxBuffer = makePreviewDocxBuffer(templateBuffer);
-
-    tempDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "frt-template-validation-")
-    );
-
-    const docxPath = path.join(tempDir, "template_validation.docx");
-
-    await fs.writeFile(docxPath, docxBuffer);
-    await runLibreOfficeConvertForPreview(docxPath, tempDir);
-
     return {
       isValid: true,
       message: "Template is valid.",
@@ -268,12 +250,12 @@ const validateTemplateBeforeUpload = async (templateBuffer) => {
         ? docxErrors
         : [
             error.message ||
-              "Template preview generation failed. Check placeholders and DOCX formatting.",
+              "Template validation failed. Check placeholders and DOCX formatting.",
           ];
 
     return {
       isValid: false,
-      message: `Could not generate preview resume:\n${errors.join("\n")}`,
+      message: `Template validation failed:\n${errors.join("\n")}`,
       errors,
       warnings: [
         "Make sure every {{@...}} placeholder is alone in its own paragraph.",
@@ -281,17 +263,6 @@ const validateTemplateBeforeUpload = async (templateBuffer) => {
         "Use normal Enter in Word, not Shift + Enter, around raw placeholders like {{@DETAILS}}.",
       ],
     };
-  } finally {
-    if (tempDir) {
-      try {
-        await fs.rm(tempDir, {
-          recursive: true,
-          force: true,
-        });
-      } catch (cleanupError) {
-        console.error("Template validation cleanup error:", cleanupError.message);
-      }
-    }
   }
 };
 module.exports = {
