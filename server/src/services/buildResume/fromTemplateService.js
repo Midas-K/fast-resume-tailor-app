@@ -178,12 +178,46 @@ const createXmlBuilders = (templateStyles = {}, bulletConfig = {}) => {
     return parts.join("");
   };
 
-  const buildWordBulletPPr = ({ templatePPr, justify }) => {
+  const extractReferenceLeft = (pPrInner = "") => {
+    const normalized = normalizePPrInner(pPrInner);
+    const ind = normalized.match(/<w:ind[^/]*\/>/);
+
+    if (ind) {
+      const left = ind[0].match(/w:left="(\d+)"/);
+
+      if (left) {
+        return left[1];
+      }
+    }
+
+    return "0";
+  };
+
+  const computeBulletLeft = (templatePPr = "") => {
+    const referenceLeft = Number(extractReferenceLeft(templatePPr));
+    const hanging = Number(listConfig.hanging);
+
+    return String(referenceLeft + hanging);
+  };
+
+  const setBulletIndentLeft = (pPrInner = "", left) => {
+    const hanging = listConfig.hanging;
+    const indXml = `<w:ind w:left="${left}" w:hanging="${hanging}"/>`;
+
+    if (/<w:ind[^/]*\/>/.test(pPrInner)) {
+      return pPrInner.replace(/<w:ind[^/]*\/>/, indXml);
+    }
+
+    return `${pPrInner}${indXml}`;
+  };
+
+  const buildWordBulletPPr = ({ templatePPr, justify, left }) => {
+    const bulletLeft = left || listConfig.left;
     const extras = templatePPr ? extractTemplateParagraphExtras(templatePPr) : "";
     const parts = [
       '<w:pStyle w:val="ListParagraph"/>',
       `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${listConfig.numId}"/></w:numPr>`,
-      `<w:ind w:left="${listConfig.left}" w:hanging="${listConfig.hanging}"/>`,
+      `<w:ind w:left="${bulletLeft}" w:hanging="${listConfig.hanging}"/>`,
       extras,
     ];
 
@@ -198,9 +232,13 @@ const createXmlBuilders = (templateStyles = {}, bulletConfig = {}) => {
     return parts.filter(Boolean).join("");
   };
 
-  const buildFallbackPPrContent = ({ bullet, justify }) => {
+  const buildFallbackPPrContent = ({ bullet, justify, templatePPr }) => {
     if (bullet) {
-      return buildWordBulletPPr({ templatePPr: "", justify });
+      return buildWordBulletPPr({
+        templatePPr: templatePPr || "",
+        justify,
+        left: computeBulletLeft(templatePPr),
+      });
     }
 
     const parts = [];
@@ -287,9 +325,20 @@ const createXmlBuilders = (templateStyles = {}, bulletConfig = {}) => {
     let pPrContent;
 
     if (bullet) {
-      pPrContent = templateHasWordBullets
-        ? normalizePPrInner(templatePPr)
-        : buildWordBulletPPr({ templatePPr, justify });
+      const bulletLeft = computeBulletLeft(templatePPr);
+
+      if (templateHasWordBullets) {
+        pPrContent = setBulletIndentLeft(
+          normalizePPrInner(templatePPr),
+          bulletLeft
+        );
+      } else {
+        pPrContent = buildWordBulletPPr({
+          templatePPr,
+          justify,
+          left: bulletLeft,
+        });
+      }
     } else {
       pPrContent = templatePPr
         ? normalizePPrInner(templatePPr)
