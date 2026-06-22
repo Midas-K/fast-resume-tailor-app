@@ -259,8 +259,55 @@ const getSectionStyles = (styleMap, key, fallbackKey) => {
   };
 };
 
+const extractTabPosition = (pPrBlock = "") => {
+  const match = String(pPrBlock || "").match(/w:pos="(\d+)"/);
+  return match ? Number(match[1]) : null;
+};
+
+const mergeTemplatePPrWithBullets = (templatePPr, { numId = "99" } = {}) => {
+  if (!templatePPr) {
+    return `
+      <w:pPr>
+        <w:pStyle w:val="ListParagraph"/>
+        <w:numPr>
+          <w:ilvl w:val="0"/>
+          <w:numId w:val="${numId}"/>
+        </w:numPr>
+        <w:ind w:left="360" w:hanging="180"/>
+      </w:pPr>
+    `;
+  }
+
+  let inner = templatePPr
+    .replace(/^<w:pPr[^>]*>/, "")
+    .replace(/<\/w:pPr>$/, "")
+    .trim();
+
+  inner = inner.replace(/<w:tabs[\s\S]*?<\/w:tabs>/g, "");
+  inner = inner.replace(/<w:numPr[\s\S]*?<\/w:numPr>/g, "");
+  inner = inner.replace(/<w:pStyle[^>]*\/>/g, "");
+  inner = inner.replace(/<w:pStyle[^>]*>[\s\S]*?<\/w:pStyle>/g, "");
+  inner = inner.replace(/<w:ind[^>]*\/>/g, "");
+
+  const tabPos = extractTabPosition(templatePPr);
+  const leftIndent = tabPos || 360;
+  const hangingIndent = tabPos ? Math.max(180, Math.round(tabPos * 0.42)) : 180;
+
+  const bulletBlock = `
+    <w:pStyle w:val="ListParagraph"/>
+    <w:numPr>
+      <w:ilvl w:val="0"/>
+      <w:numId w:val="${numId}"/>
+    </w:numPr>
+    <w:ind w:left="${leftIndent}" w:hanging="${hangingIndent}"/>
+  `;
+
+  return `<w:pPr>${bulletBlock}${inner}</w:pPr>`;
+};
+
 module.exports = {
   extractTemplateStyleMap,
   getSectionStyles,
   mergeTemplateRunProperties,
+  mergeTemplatePPrWithBullets,
 };

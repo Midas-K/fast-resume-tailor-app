@@ -10,6 +10,7 @@ const {
   extractTemplateStyleMap,
   getSectionStyles,
   mergeTemplateRunProperties,
+  mergeTemplatePPrWithBullets,
 } = require("./docxTemplateStyles");
 
 const DOCX_MIME_TYPE =
@@ -177,16 +178,9 @@ const makeParagraphXml = ({
     let pPrBlock = templatePPr;
 
     if (bullet && !usesTemplateNumbering) {
-      // Template uses tabs/plain paragraphs (e.g. Raj template) — keep template layout.
-    } else if (bullet && usesTemplateNumbering) {
-      // Keep template bullet numbering as-is.
-    } else if (!templatePPr) {
-      pPrBlock = `
-      <w:pPr>
-        ${justify ? '<w:jc w:val="both"/>' : ""}
-        <w:spacing w:after="80"/>
-      </w:pPr>
-    `;
+      pPrBlock = mergeTemplatePPrWithBullets(templatePPr, {
+        numId: BULLET_NUM_ID,
+      });
     }
 
     return `
