@@ -12,6 +12,7 @@ const {
   normalizePPrInner,
   normalizeRunProperties,
 } = require("./templateStyles");
+const { repairSplitPlaceholdersInZip } = require("./docxPlaceholderRepair");
 
 const DOCX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -701,6 +702,7 @@ ${bulletDefinition}
 const createDocxBuffer = ({ templateBuffer, data, bulletConfig = {} }) => {
   const zip = new PizZip(templateBuffer);
 
+  repairSplitPlaceholdersInZip(zip);
   ensureBulletNumberingXml(zip, bulletConfig);
 
   const doc = new Docxtemplater(zip, {

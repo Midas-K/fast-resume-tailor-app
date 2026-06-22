@@ -5,6 +5,7 @@ const { execFile } = require("child_process");
 const PizZip = require("pizzip");
 const Docxtemplater = require("docxtemplater");
 const { pathToFileURL } = require("url");
+const { repairSplitPlaceholdersInZip } = require("../buildResume/docxPlaceholderRepair");
 
 const DOCX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -411,6 +412,7 @@ const makePreviewExperienceDetails = (lines) => {
 const makePreviewDocxBuffer = (templateBuffer) => {
   const zip = new PizZip(templateBuffer);
 
+  repairSplitPlaceholdersInZip(zip);
   ensureBulletNumberingXml(zip);
 
   const doc = new Docxtemplater(zip, {

@@ -1,6 +1,8 @@
 const fs = require("fs/promises");
 const path = require("path");
 const os = require("os");
+const PizZip = require("pizzip");
+const { findSplitPlaceholders } = require("../buildResume/docxPlaceholderRepair");
 const {
   DOCX_MIME_TYPE,
   extractTextFromDocxBuffer,
@@ -212,6 +214,16 @@ const validateTemplateBeforeUpload = async (templateBuffer) => {
       templateText: extracted.text,
       paragraphs: extracted.paragraphs,
     });
+
+    const documentXml =
+      new PizZip(templateBuffer).file("word/document.xml")?.asText() || "";
+    const splitPlaceholders = findSplitPlaceholders(documentXml);
+
+    if (splitPlaceholders.length > 0) {
+      validationReport.warnings.push(
+        `These placeholders are split by Word formatting (often background images): ${splitPlaceholders.join(", ")}. They are auto-repaired when generating resumes.`
+      );
+    }
 
     if (!validationReport.isValid) {
       return {
