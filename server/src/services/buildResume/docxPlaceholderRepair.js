@@ -1,3 +1,8 @@
+const {
+  normalizeRunProperties,
+  normalizePPrInner,
+} = require("./templateStyles");
+
 const PLACEHOLDERS_TO_REPAIR = [
   "{{FULL_NAME}}",
   "{{TITLE}}",
@@ -34,13 +39,27 @@ const getParagraphText = (paragraphXml) => {
 };
 
 const repairSplitPlaceholderParagraph = (paragraphXml, placeholder) => {
-  const pPrMatch = paragraphXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
-  const pPr = pPrMatch ? pPrMatch[0] : "";
+  const pPrMatch = paragraphXml.match(/<w:pPr>([\s\S]*?)<\/w:pPr>/);
+  const pPr = pPrMatch
+    ? `<w:pPr>${normalizePPrInner(pPrMatch[1].trim())}</w:pPr>`
+    : "";
   const openTag = paragraphXml.match(/<w:p[^>]*>/)?.[0] || "<w:p>";
-  const rPrMatch = paragraphXml.match(
-    /<w:r[^>]*>[\s\S]*?<w:rPr>([\s\S]*?)<\/w:rPr>/
-  );
-  const rPrXml = rPrMatch ? `<w:rPr>${rPrMatch[1]}</w:rPr>` : "";
+
+  const runs = paragraphXml.match(/<w:r[\s\S]*?<\/w:r>/g) || [];
+  let rPrXml = "";
+
+  for (const run of runs) {
+    if (!/<w:t[^>]*>/.test(run) || /<w:drawing>/.test(run)) {
+      continue;
+    }
+
+    const rPrMatch = run.match(/<w:rPr>([\s\S]*?)<\/w:rPr>/);
+
+    if (rPrMatch) {
+      rPrXml = `<w:rPr>${normalizeRunProperties(rPrMatch[1])}</w:rPr>`;
+      break;
+    }
+  }
 
   return `${openTag}${pPr}<w:r>${rPrXml}<w:t>${placeholder}</w:t></w:r></w:p>`;
 };

@@ -17,6 +17,15 @@ const getParagraphText = (paragraphXml) => {
 
 const findParagraphXmlContaining = (xml, marker) => {
   const paragraphs = xml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+  const bracketMarker = marker.startsWith("{{") ? marker : `{{${marker}`;
+
+  for (const paragraphXml of paragraphs) {
+    const text = getParagraphText(paragraphXml);
+
+    if (text.includes(bracketMarker) || text.includes(`{{${marker}}}`)) {
+      return paragraphXml;
+    }
+  }
 
   for (const paragraphXml of paragraphs) {
     const text = getParagraphText(paragraphXml);
@@ -112,6 +121,7 @@ const normalizeRunProperties = (rPr = "") => {
     .replace(/\s*w:themeColor="[^"]*"/g, "")
     .replace(/\s*w:themeTint="[^"]*"/g, "")
     .replace(/\s*w:themeShade="[^"]*"/g, "")
+    .replace(/<w:vanish[^/]*\/>/g, "")
     .trim();
 };
 
@@ -123,10 +133,30 @@ const extractBaseRPr = (paragraphXml) => {
   let runRPr = "";
 
   for (const run of runs) {
+    if (!/<w:t[^>]*>/.test(run) || /<w:drawing>/.test(run)) {
+      continue;
+    }
+
     const content = extractRPrContent(run);
+
     if (content) {
       runRPr = content;
       break;
+    }
+  }
+
+  if (!runRPr) {
+    for (const run of runs) {
+      if (/<w:drawing>/.test(run)) {
+        continue;
+      }
+
+      const content = extractRPrContent(run);
+
+      if (content) {
+        runRPr = content;
+        break;
+      }
     }
   }
 
