@@ -11,6 +11,7 @@ const {
   extractBulletListConfig,
   normalizePPrInner,
   normalizeRunProperties,
+  applyBoldToRPr,
 } = require("./templateStyles");
 const { repairSplitPlaceholdersInZip } = require("./docxPlaceholderRepair");
 
@@ -146,11 +147,7 @@ const createXmlBuilders = (templateStyles = {}, bulletConfig = {}) => {
       return baseRPr || "";
     }
 
-    if (baseRPr && /<w:b(?:\/>|>)/.test(baseRPr)) {
-      return baseRPr;
-    }
-
-    return `${baseRPr || ""}<w:b/>`;
+    return applyBoldToRPr(baseRPr || "");
   };
 
   const extractTemplateParagraphExtras = (pPrInner = "") => {

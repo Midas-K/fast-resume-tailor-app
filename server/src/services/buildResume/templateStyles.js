@@ -58,6 +58,54 @@ const extractPPrInner = (paragraphXml) => {
   return match ? match[1].trim() : "";
 };
 
+const getParagraphRuns = (paragraphXml) => {
+  return paragraphXml.match(/<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/g) || [];
+};
+
+const getRunText = (runXml) => {
+  return (runXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
+    .map((token) => token.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
+    .join("");
+};
+
+const hasBoldInRPr = (rPr = "") => {
+  if (!rPr) {
+    return false;
+  }
+
+  if (/<w:b\s+w:val="0"/.test(rPr)) {
+    return false;
+  }
+
+  return /<w:b(?:\s+w:val="(?:1|true)")?(?:\/>|>)/.test(rPr);
+};
+
+const hasItalicInRPr = (rPr = "") => {
+  if (!rPr) {
+    return false;
+  }
+
+  if (/<w:i\s+w:val="0"/.test(rPr)) {
+    return false;
+  }
+
+  return /<w:i(?:\s+w:val="(?:1|true)")?(?:\/>|>)/.test(rPr);
+};
+
+const applyBoldToRPr = (rPr = "") => {
+  let merged = rPr || "";
+
+  if (!hasBoldInRPr(merged)) {
+    merged += "<w:b/>";
+  }
+
+  if (!/<w:bCs/.test(merged)) {
+    merged += "<w:bCs/>";
+  }
+
+  return merged;
+};
+
 const extractRPrContent = (xmlFragment) => {
   const match = xmlFragment.match(/<w:rPr>([\s\S]*?)<\/w:rPr>/);
   return match ? match[1].trim() : "";
@@ -69,11 +117,15 @@ const mergeRunProperties = (primary = "", secondary = "") => {
   if (primary && secondary) {
     merged = primary;
 
-    if (secondary.includes("<w:b") && !merged.includes("<w:b")) {
+    if (secondary.includes("<w:b") && !hasBoldInRPr(merged)) {
       merged += "<w:b/>";
     }
 
-    if (secondary.includes("<w:i") && !merged.includes("<w:i")) {
+    if (secondary.includes("<w:bCs") && !merged.includes("<w:bCs")) {
+      merged += "<w:bCs/>";
+    }
+
+    if (secondary.includes("<w:i") && !hasItalicInRPr(merged)) {
       merged += "<w:i/>";
     }
 
@@ -122,27 +174,58 @@ const normalizeRunProperties = (rPr = "") => {
     .replace(/\s*w:themeTint="[^"]*"/g, "")
     .replace(/\s*w:themeShade="[^"]*"/g, "")
     .replace(/<w:vanish[^/]*\/>/g, "")
+    .replace(/<w:b\s+w:val="0"[^/]*\/>/g, "")
+    .replace(/<w:bCs\s+w:val="0"[^/]*\/>/g, "")
     .trim();
+};
+
+const mergePlaceholderRunRPr = (paragraphXml) => {
+  const pPrRPr = extractRPrContent(extractPPrInner(paragraphXml));
+  const runs = getParagraphRuns(paragraphXml);
+  let bestRunRPr = "";
+  let bestTextLength = -1;
+
+  runs.forEach((run) => {
+    if (!/<w:t[^>]*>/.test(run) || /<w:drawing>/.test(run)) {
+      return;
+    }
+
+    const text = getRunText(run);
+    const runRPr = extractRPrContent(run);
+
+    if (!runRPr || text.length < bestTextLength) {
+      return;
+    }
+
+    bestTextLength = text.length;
+    bestRunRPr = runRPr;
+  });
+
+  return normalizeRunProperties(mergeRunProperties(pPrRPr, bestRunRPr));
 };
 
 const extractBaseRPr = (paragraphXml) => {
   const pPrInner = extractPPrInner(paragraphXml);
   const pPrRPr = extractRPrContent(pPrInner);
 
-  const runs = paragraphXml.match(/<w:r[\s\S]*?<\/w:r>/g) || [];
+  const runs = getParagraphRuns(paragraphXml);
   let runRPr = "";
+  let bestTextLength = -1;
 
   for (const run of runs) {
     if (!/<w:t[^>]*>/.test(run) || /<w:drawing>/.test(run)) {
       continue;
     }
 
+    const text = getRunText(run);
     const content = extractRPrContent(run);
 
-    if (content) {
-      runRPr = content;
-      break;
+    if (!content || text.length < bestTextLength) {
+      continue;
     }
+
+    bestTextLength = text.length;
+    runRPr = content;
   }
 
   if (!runRPr) {
@@ -318,6 +401,9 @@ const extractPlaceholderStyles = (templateBuffer) => {
 module.exports = {
   extractPlaceholderStyles,
   extractBulletListConfig,
+  mergePlaceholderRunRPr,
   normalizeRunProperties,
   normalizePPrInner,
+  applyBoldToRPr,
+  hasBoldInRPr,
 };

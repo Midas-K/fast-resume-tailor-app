@@ -1,6 +1,7 @@
 const {
   normalizeRunProperties,
   normalizePPrInner,
+  mergePlaceholderRunRPr,
 } = require("./templateStyles");
 
 const PLACEHOLDERS_TO_REPAIR = [
@@ -44,22 +45,8 @@ const repairSplitPlaceholderParagraph = (paragraphXml, placeholder) => {
     ? `<w:pPr>${normalizePPrInner(pPrMatch[1].trim())}</w:pPr>`
     : "";
   const openTag = paragraphXml.match(/<w:p[^>]*>/)?.[0] || "<w:p>";
-
-  const runs = paragraphXml.match(/<w:r[\s\S]*?<\/w:r>/g) || [];
-  let rPrXml = "";
-
-  for (const run of runs) {
-    if (!/<w:t[^>]*>/.test(run) || /<w:drawing>/.test(run)) {
-      continue;
-    }
-
-    const rPrMatch = run.match(/<w:rPr>([\s\S]*?)<\/w:rPr>/);
-
-    if (rPrMatch) {
-      rPrXml = `<w:rPr>${normalizeRunProperties(rPrMatch[1])}</w:rPr>`;
-      break;
-    }
-  }
+  const mergedRPr = mergePlaceholderRunRPr(paragraphXml);
+  const rPrXml = mergedRPr ? `<w:rPr>${mergedRPr}</w:rPr>` : "";
 
   return `${openTag}${pPr}<w:r>${rPrXml}<w:t>${placeholder}</w:t></w:r></w:p>`;
 };
