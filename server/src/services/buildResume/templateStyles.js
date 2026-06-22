@@ -92,6 +92,18 @@ const hasItalicInRPr = (rPr = "") => {
   return /<w:i(?:\s+w:val="(?:1|true)")?(?:\/>|>)/.test(rPr);
 };
 
+const hasBoldCsInRPr = (rPr = "") => {
+  if (!rPr) {
+    return false;
+  }
+
+  if (/<w:bCs\s+w:val="0"/.test(rPr)) {
+    return false;
+  }
+
+  return /<w:bCs(?:\s+w:val="(?:1|true)")?(?:\/>|>)/.test(rPr);
+};
+
 const applyBoldToRPr = (rPr = "") => {
   let merged = rPr || "";
 
@@ -117,15 +129,15 @@ const mergeRunProperties = (primary = "", secondary = "") => {
   if (primary && secondary) {
     merged = primary;
 
-    if (secondary.includes("<w:b") && !hasBoldInRPr(merged)) {
+    if (hasBoldInRPr(secondary) && !hasBoldInRPr(merged)) {
       merged += "<w:b/>";
     }
 
-    if (secondary.includes("<w:bCs") && !merged.includes("<w:bCs")) {
+    if (hasBoldCsInRPr(secondary) && !hasBoldCsInRPr(merged)) {
       merged += "<w:bCs/>";
     }
 
-    if (secondary.includes("<w:i") && !hasItalicInRPr(merged)) {
+    if (hasItalicInRPr(secondary) && !hasItalicInRPr(merged)) {
       merged += "<w:i/>";
     }
 
