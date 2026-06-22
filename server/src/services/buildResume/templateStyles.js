@@ -143,6 +143,113 @@ const normalizePPrInner = (pPrInner = "") => {
   });
 };
 
+const readIndTwips = (indXml = "") => {
+  const left = indXml.match(/w:left="(\d+)"/);
+  const hanging = indXml.match(/w:hanging="(\d+)"/);
+
+  return {
+    left: left ? left[1] : "",
+    hanging: hanging ? hanging[1] : "",
+  };
+};
+
+const extractBulletListConfig = (templateBuffer) => {
+  const fallback = {
+    numId: "99",
+    left: "720",
+    hanging: "360",
+    useTemplateNumId: false,
+  };
+
+  if (!templateBuffer) {
+    return fallback;
+  }
+
+  try {
+    const zip = new PizZip(templateBuffer);
+    let left = fallback.left;
+    let hanging = fallback.hanging;
+
+    const stylesFile = zip.file("word/styles.xml");
+
+    if (stylesFile) {
+      const stylesXml = stylesFile.asText();
+      const listParagraph = stylesXml.match(
+        /<w:style[^>]*w:styleId="ListParagraph"[\s\S]*?<\/w:style>/
+      );
+
+      if (listParagraph) {
+        const ind = listParagraph[0].match(/<w:ind[^/]*\/>/);
+
+        if (ind) {
+          const values = readIndTwips(ind[0]);
+
+          if (values.left) {
+            left = values.left;
+          }
+
+          if (values.hanging) {
+            hanging = values.hanging;
+          }
+        }
+      }
+    }
+
+    const numberingFile = zip.file("word/numbering.xml");
+
+    if (!numberingFile) {
+      return { ...fallback, left, hanging };
+    }
+
+    const numberingXml = numberingFile.asText();
+    const numDefinitions = [
+      ...numberingXml.matchAll(
+        /<w:num w:numId="(\d+)"[^>]*>[\s\S]*?<w:abstractNumId w:val="(\d+)"/g
+      ),
+    ];
+
+    for (const [, numId, abstractNumId] of numDefinitions) {
+      const abstractNumPattern = new RegExp(
+        `<w:abstractNum[^>]*w:abstractNumId="${abstractNumId}"[\\s\\S]*?</w:abstractNum>`
+      );
+      const abstractNum = numberingXml.match(abstractNumPattern);
+
+      if (!abstractNum || !abstractNum[0].includes('w:numFmt w:val="bullet"')) {
+        continue;
+      }
+
+      const levelZero = abstractNum[0].match(/<w:lvl w:ilvl="0"[\s\S]*?<\/w:lvl>/);
+
+      if (levelZero) {
+        const levelInd = levelZero[0].match(/<w:ind[^/]*\/>/);
+
+        if (levelInd) {
+          const values = readIndTwips(levelInd[0]);
+
+          if (values.left) {
+            left = values.left;
+          }
+
+          if (values.hanging) {
+            hanging = values.hanging;
+          }
+        }
+      }
+
+      return {
+        numId,
+        left,
+        hanging,
+        useTemplateNumId: true,
+      };
+    }
+
+    return { ...fallback, left, hanging };
+  } catch {
+    return fallback;
+  }
+};
+
 const extractPlaceholderStyles = (templateBuffer) => {
   if (!templateBuffer) {
     return {};
@@ -180,6 +287,7 @@ const extractPlaceholderStyles = (templateBuffer) => {
 
 module.exports = {
   extractPlaceholderStyles,
+  extractBulletListConfig,
   normalizeRunProperties,
   normalizePPrInner,
 };

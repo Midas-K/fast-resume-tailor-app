@@ -6,7 +6,12 @@ const PizZip = require("pizzip");
 const Docxtemplater = require("docxtemplater");
 const pool = require("../../db");
 const { parseJsonField } = require("../../utils/parse");
-const { extractPlaceholderStyles, normalizePPrInner, normalizeRunProperties } = require("./templateStyles");
+const {
+  extractPlaceholderStyles,
+  extractBulletListConfig,
+  normalizePPrInner,
+  normalizeRunProperties,
+} = require("./templateStyles");
 
 const DOCX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -127,8 +132,13 @@ const parseBoldSegments = (text, options = {}) => {
   return rebuilt.filter((segment) => segment.text);
 };
 
-const createXmlBuilders = (templateStyles = {}) => {
+const createXmlBuilders = (templateStyles = {}, bulletConfig = {}) => {
   const getStyle = (styleKey) => templateStyles[styleKey] || {};
+  const listConfig = {
+    numId: bulletConfig.numId || BULLET_NUM_ID,
+    left: bulletConfig.left || "720",
+    hanging: bulletConfig.hanging || "360",
+  };
 
   const mergeBoldIntoRPr = (baseRPr, bold) => {
     if (!bold) {
@@ -142,19 +152,57 @@ const createXmlBuilders = (templateStyles = {}) => {
     return `${baseRPr || ""}<w:b/>`;
   };
 
-  const buildFallbackPPrContent = ({ bullet, justify }) => {
+  const extractTemplateParagraphExtras = (pPrInner = "") => {
+    const normalized = normalizePPrInner(pPrInner);
     const parts = [];
 
-    if (bullet) {
-      parts.push(
-        `<w:pStyle w:val="ListParagraph"/>
-        <w:numPr>
-          <w:ilvl w:val="0"/>
-          <w:numId w:val="${BULLET_NUM_ID}"/>
-        </w:numPr>
-        <w:ind w:left="360" w:hanging="180"/>`
-      );
+    const jc = normalized.match(/<w:jc[^/]*\/>/);
+
+    if (jc) {
+      parts.push(jc[0]);
     }
+
+    const spacing = normalized.match(/<w:spacing[^/]*\/>/);
+
+    if (spacing) {
+      parts.push(spacing[0]);
+    }
+
+    const pPrRPr = normalized.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
+
+    if (pPrRPr) {
+      parts.push(pPrRPr[0]);
+    }
+
+    return parts.join("");
+  };
+
+  const buildWordBulletPPr = ({ templatePPr, justify }) => {
+    const extras = templatePPr ? extractTemplateParagraphExtras(templatePPr) : "";
+    const parts = [
+      '<w:pStyle w:val="ListParagraph"/>',
+      `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${listConfig.numId}"/></w:numPr>`,
+      `<w:ind w:left="${listConfig.left}" w:hanging="${listConfig.hanging}"/>`,
+      extras,
+    ];
+
+    if (!extras.includes("<w:jc") && justify) {
+      parts.push('<w:jc w:val="both"/>');
+    }
+
+    if (!extras.includes("<w:spacing")) {
+      parts.push('<w:spacing w:after="80"/>');
+    }
+
+    return parts.filter(Boolean).join("");
+  };
+
+  const buildFallbackPPrContent = ({ bullet, justify }) => {
+    if (bullet) {
+      return buildWordBulletPPr({ templatePPr: "", justify });
+    }
+
+    const parts = [];
 
     if (justify) {
       parts.push('<w:jc w:val="both"/>');
@@ -164,38 +212,6 @@ const createXmlBuilders = (templateStyles = {}) => {
 
     return parts.join("");
   };
-
-  const makeRunXml = ({ text, bold = false, styleKey = "SUMMARY" }) => {
-    const baseRPr = getNormalizedRPr(styleKey);
-    const rPr = mergeBoldIntoRPr(baseRPr, bold);
-
-    return `
-    <w:r>
-      <w:rPr>${rPr}</w:rPr>
-      <w:t xml:space="preserve">${escapeXml(text)}</w:t>
-    </w:r>
-  `;
-  };
-
-  const compactBulletPPr = (pPrInner = "") => {
-    if (!pPrInner) {
-      return pPrInner;
-    }
-
-    let cleaned = pPrInner.replace(/<w:tabs>[\s\S]*?<\/w:tabs>/g, "").trim();
-    cleaned = cleaned.replace(/<w:ind[^/]*\/>/g, "").trim();
-
-    // Bullet + 2 spaces: hang wrapped lines under the text, not the page margin.
-    const bulletIndent = '<w:ind w:left="360" w:hanging="360"/>';
-
-    if (!cleaned.includes("<w:ind")) {
-      cleaned = `${cleaned}${bulletIndent}`;
-    }
-
-    return cleaned;
-  };
-
-  const BULLET_GAP = "  ";
 
   const getNormalizedRPr = (styleKey) => {
     let rPr = normalizeRunProperties(getStyle(styleKey).baseRPr || "");
@@ -226,13 +242,14 @@ const createXmlBuilders = (templateStyles = {}) => {
     return rPr;
   };
 
-  const makeBulletPrefixedRuns = ({ text, styleKey }) => {
+  const makeRunXml = ({ text, bold = false, styleKey = "SUMMARY" }) => {
     const baseRPr = getNormalizedRPr(styleKey);
+    const rPr = mergeBoldIntoRPr(baseRPr, bold);
 
     return `
     <w:r>
-      <w:rPr>${baseRPr}</w:rPr>
-      <w:t xml:space="preserve">•${BULLET_GAP}${escapeXml(text)}</w:t>
+      <w:rPr>${rPr}</w:rPr>
+      <w:t xml:space="preserve">${escapeXml(text)}</w:t>
     </w:r>
   `;
   };
@@ -251,50 +268,31 @@ const createXmlBuilders = (templateStyles = {}) => {
 
     const templatePPr = getStyle(styleKey).pPrInner;
     const templateHasWordBullets = /<w:numPr>/.test(templatePPr || "");
-    const useTextBullet =
-      bullet && templatePPr && !templateHasWordBullets && !bold;
 
-    let bodyRuns = "";
+    const segments = bold
+      ? [{ text: cleanText, bold: true }]
+      : parseBoldSegments(cleanText, { boldBeforeColon });
 
-    if (useTextBullet && !boldBeforeColon && !/\*\*/.test(cleanText)) {
-      bodyRuns = makeBulletPrefixedRuns({
-        text: cleanText,
-        styleKey,
-      });
-    } else {
-      const segments = bold
-        ? [{ text: cleanText, bold: true }]
-        : parseBoldSegments(cleanText, { boldBeforeColon });
-
-      bodyRuns = segments
-        .map((segment, index) => {
-          const run = makeRunXml({
-            text: segment.text,
-            bold: segment.bold,
-            styleKey,
-          });
-
-          if (useTextBullet && index === 0) {
-            const baseRPr = getNormalizedRPr(styleKey);
-
-            return `
-    <w:r>
-      <w:rPr>${baseRPr}</w:rPr>
-      <w:t xml:space="preserve">•${BULLET_GAP}</w:t>
-    </w:r>${run}`;
-          }
-
-          return run;
+    const bodyRuns = segments
+      .map((segment) =>
+        makeRunXml({
+          text: segment.text,
+          bold: segment.bold,
+          styleKey,
         })
-        .join("");
-    }
+      )
+      .join("");
 
-    let pPrContent = templatePPr
-      ? normalizePPrInner(templatePPr)
-      : buildFallbackPPrContent({ bullet, justify });
+    let pPrContent;
 
-    if (useTextBullet && templatePPr) {
-      pPrContent = compactBulletPPr(normalizePPrInner(templatePPr));
+    if (bullet) {
+      pPrContent = templateHasWordBullets
+        ? normalizePPrInner(templatePPr)
+        : buildWordBulletPPr({ templatePPr, justify });
+    } else {
+      pPrContent = templatePPr
+        ? normalizePPrInner(templatePPr)
+        : buildFallbackPPrContent({ bullet: false, justify });
     }
 
     return `
@@ -607,10 +605,17 @@ const formatExperienceXml = (experienceInputs, xml = defaultXmlBuilders) => {
     .join("");
 };
 
-const ensureBulletNumberingXml = (zip) => {
+const ensureBulletNumberingXml = (zip, bulletConfig = {}) => {
+  if (bulletConfig.useTemplateNumId) {
+    return;
+  }
+
   const numberingPath = "word/numbering.xml";
   const relsPath = "word/_rels/document.xml.rels";
   const contentTypesPath = "[Content_Types].xml";
+
+  const left = bulletConfig.left || "720";
+  const hanging = bulletConfig.hanging || "360";
 
   const bulletDefinition = `
   <w:abstractNum w:abstractNumId="${BULLET_ABSTRACT_NUM_ID}">
@@ -621,10 +626,7 @@ const ensureBulletNumberingXml = (zip) => {
       <w:lvlText w:val="•"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
-        <w:tabs>
-          <w:tab w:val="num" w:pos="360"/>
-        </w:tabs>
-        <w:ind w:left="360" w:hanging="180"/>
+        <w:ind w:left="${left}" w:hanging="${hanging}"/>
       </w:pPr>
       <w:rPr>
         <w:rFonts w:ascii="Symbol" w:hAnsi="Symbol" w:hint="default"/>
@@ -696,10 +698,10 @@ ${bulletDefinition}
   }
 };
 
-const createDocxBuffer = ({ templateBuffer, data }) => {
+const createDocxBuffer = ({ templateBuffer, data, bulletConfig = {} }) => {
   const zip = new PizZip(templateBuffer);
 
-  ensureBulletNumberingXml(zip);
+  ensureBulletNumberingXml(zip, bulletConfig);
 
   const doc = new Docxtemplater(zip, {
     paragraphLoop: true,
@@ -790,7 +792,8 @@ async function buildResumeFromTemplate({ user, body }) {
     const finalCertifications = certification || certifications || "";
 
     const templateStyles = extractPlaceholderStyles(template.file_data);
-    const xml = createXmlBuilders(templateStyles);
+    const bulletConfig = extractBulletListConfig(template.file_data);
+    const xml = createXmlBuilders(templateStyles, bulletConfig);
 
     const contact = buildContact({
       email: profile.email,
@@ -849,6 +852,7 @@ async function buildResumeFromTemplate({ user, body }) {
     const docxBuffer = createDocxBuffer({
       templateBuffer: template.file_data,
       data,
+      bulletConfig,
     });
 
     const safeProfileName = sanitizeFileName(profile.name, "profile");
