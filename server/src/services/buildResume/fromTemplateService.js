@@ -6,6 +6,11 @@ const PizZip = require("pizzip");
 const Docxtemplater = require("docxtemplater");
 const pool = require("../../db");
 const { parseJsonField } = require("../../utils/parse");
+const {
+  extractTemplateStyleMap,
+  getSectionStyles,
+  mergeTemplateRunProperties,
+} = require("./docxTemplateStyles");
 
 const DOCX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -126,14 +131,13 @@ const parseBoldSegments = (text, options = {}) => {
   return rebuilt.filter((segment) => segment.text);
 };
 
-const makeRunXml = ({ text, bold = false }) => {
+const makeRunXml = ({ text, bold = null, templateRPr = "" }) => {
   const safeText = escapeXml(text);
+  const rPrBlock = mergeTemplateRunProperties(templateRPr, { bold });
 
   return `
     <w:r>
-      <w:rPr>
-        ${bold ? "<w:b/>" : ""}
-      </w:rPr>
+      ${rPrBlock}
       <w:t xml:space="preserve">${safeText}</w:t>
     </w:r>
   `;
@@ -141,16 +145,21 @@ const makeRunXml = ({ text, bold = false }) => {
 
 const makeParagraphXml = ({
   text = "",
-  bold = false,
+  bold = null,
   bullet = false,
   justify = true,
   boldBeforeColon = false,
+  sectionStyles = null,
 }) => {
   const cleanText = bullet ? stripBullet(text) : String(text || "").trim();
 
   if (!cleanText) return "";
 
-  const segments = bold
+  const templatePPr = sectionStyles?.pPr || "";
+  const templateRPr = sectionStyles?.rPr || "";
+  const usesTemplateNumbering = Boolean(sectionStyles?.usesNumbering);
+
+  const segments = bold === true
     ? [{ text: cleanText, bold: true }]
     : parseBoldSegments(cleanText, { boldBeforeColon });
 
@@ -158,10 +167,35 @@ const makeParagraphXml = ({
     .map((segment) =>
       makeRunXml({
         text: segment.text,
-        bold: segment.bold,
+        bold: segment.bold ? true : bold === false ? false : null,
+        templateRPr,
       })
     )
     .join("");
+
+  if (templatePPr) {
+    let pPrBlock = templatePPr;
+
+    if (bullet && !usesTemplateNumbering) {
+      // Template uses tabs/plain paragraphs (e.g. Raj template) — keep template layout.
+    } else if (bullet && usesTemplateNumbering) {
+      // Keep template bullet numbering as-is.
+    } else if (!templatePPr) {
+      pPrBlock = `
+      <w:pPr>
+        ${justify ? '<w:jc w:val="both"/>' : ""}
+        <w:spacing w:after="80"/>
+      </w:pPr>
+    `;
+    }
+
+    return `
+    <w:p>
+      ${pPrBlock}
+      ${bodyRuns}
+    </w:p>
+  `;
+  }
 
   return `
     <w:p>
@@ -201,7 +235,13 @@ const makeSectionXmlFromLines = ({
   bullet = false,
   boldBeforeColon = false,
   justify = true,
+  styleKey = "",
+  styleMap = null,
 }) => {
+  const sectionStyles = styleKey
+    ? getSectionStyles(styleMap, styleKey)
+    : null;
+
   return lines
     .map((line) =>
       makeParagraphXml({
@@ -209,6 +249,7 @@ const makeSectionXmlFromLines = ({
         bullet,
         boldBeforeColon,
         justify,
+        sectionStyles,
       })
     )
     .join("");
@@ -336,7 +377,7 @@ const formatEducationItems = (educationValue, profileLocation = "") => {
   });
 };
 
-const formatExperienceItems = (experienceInputs, profileLocation = "") => {
+const formatExperienceItems = (experienceInputs, profileLocation = "", styleMap = null) => {
   if (!Array.isArray(experienceInputs)) return [];
 
   return experienceInputs.map((item) => {
@@ -358,6 +399,8 @@ const formatExperienceItems = (experienceInputs, profileLocation = "") => {
       lines: detailsLines,
       bullet: true,
       justify: true,
+      styleKey: "DETAILS",
+      styleMap,
     });
 
     return {
@@ -381,12 +424,14 @@ const formatExperienceItems = (experienceInputs, profileLocation = "") => {
   });
 };
 
-const formatEducationXml = (educationValue) => {
+const formatEducationXml = (educationValue, styleMap = null) => {
   const educationItems = formatEducationItems(educationValue);
 
   if (educationItems.length === 0) {
     return "";
   }
+
+  const sectionStyles = getSectionStyles(styleMap, "EDUCATION", "EDUCATION_SCHOOL");
 
   return educationItems
     .map((item) => {
@@ -401,12 +446,13 @@ const formatEducationXml = (educationValue) => {
       return makeParagraphXml({
         text: finalLine,
         justify: true,
+        sectionStyles,
       });
     })
     .join("");
 };
 
-const formatSummaryXml = (summary) => {
+const formatSummaryXml = (summary, styleMap = null) => {
   const lines = splitCleanLines(summary);
 
   if (lines.length === 0) return "";
@@ -415,10 +461,12 @@ const formatSummaryXml = (summary) => {
     lines,
     bullet: false,
     justify: true,
+    styleKey: "SUMMARY",
+    styleMap,
   });
 };
 
-const formatSkillsXml = (skills) => {
+const formatSkillsXml = (skills, styleMap = null) => {
   const lines = splitCleanLines(skills).map(stripBullet);
 
   if (lines.length === 0) return "";
@@ -428,10 +476,12 @@ const formatSkillsXml = (skills) => {
     bullet: true,
     boldBeforeColon: true,
     justify: true,
+    styleKey: "SKILLS",
+    styleMap,
   });
 };
 
-const formatCertificationsXml = (certifications) => {
+const formatCertificationsXml = (certifications, styleMap = null) => {
   const lines = splitCleanLines(certifications).map(stripBullet);
 
   if (lines.length === 0) return "";
@@ -440,15 +490,27 @@ const formatCertificationsXml = (certifications) => {
     lines,
     bullet: true,
     justify: true,
+    styleKey: "CERTIFICATIONS",
+    styleMap,
   });
 };
 
-const formatExperienceXml = (experienceInputs) => {
-  const experienceItems = formatExperienceItems(experienceInputs);
+const formatExperienceXml = (experienceInputs, styleMap = null) => {
+  const experienceItems = formatExperienceItems(
+    experienceInputs,
+    "",
+    styleMap
+  );
 
   if (experienceItems.length === 0) {
     return "";
   }
+
+  const headerStyles = getSectionStyles(
+    styleMap,
+    "EXPERIENCE_HEADER",
+    "EXPERIENCE"
+  );
 
   return experienceItems
     .map((item) => {
@@ -460,6 +522,7 @@ const formatExperienceXml = (experienceInputs) => {
         text: header,
         bold: true,
         justify: false,
+        sectionStyles: headerStyles,
       });
 
       return `${headerXml}${item.DETAILS}${makeBlankParagraphXml()}`;
@@ -656,6 +719,8 @@ async function buildResumeFromTemplate({ user, body }) {
       links,
     });
 
+    const templateStyleMap = extractTemplateStyleMap(template.file_data);
+
     const educationItems = formatEducationItems(
       profile.education,
       profile.location
@@ -663,7 +728,8 @@ async function buildResumeFromTemplate({ user, body }) {
     
     const experienceItems = formatExperienceItems(
       experienceInputs,
-      profile.location
+      profile.location,
+      templateStyleMap
     );
 
     const data = {
@@ -675,11 +741,11 @@ async function buildResumeFromTemplate({ user, body }) {
       LINKS: links || "",
       CONTACT: contact,
 
-      SUMMARY: formatSummaryXml(summary),
-      EDUCATION: formatEducationXml(profile.education),
-      SKILLS: formatSkillsXml(skills),
-      EXPERIENCE: formatExperienceXml(experienceInputs),
-      CERTIFICATIONS: formatCertificationsXml(finalCertifications),
+      SUMMARY: formatSummaryXml(summary, templateStyleMap),
+      EDUCATION: formatEducationXml(profile.education, templateStyleMap),
+      SKILLS: formatSkillsXml(skills, templateStyleMap),
+      EXPERIENCE: formatExperienceXml(experienceInputs, templateStyleMap),
+      CERTIFICATIONS: formatCertificationsXml(finalCertifications, templateStyleMap),
 
       EDUCATION_ITEMS: educationItems,
       EXPERIENCE_ITEMS: experienceItems,
@@ -692,11 +758,11 @@ async function buildResumeFromTemplate({ user, body }) {
       links: links || "",
       contact,
 
-      summary: formatSummaryXml(summary),
-      education: formatEducationXml(profile.education),
-      skills: formatSkillsXml(skills),
-      experience: formatExperienceXml(experienceInputs),
-      certifications: formatCertificationsXml(finalCertifications),
+      summary: formatSummaryXml(summary, templateStyleMap),
+      education: formatEducationXml(profile.education, templateStyleMap),
+      skills: formatSkillsXml(skills, templateStyleMap),
+      experience: formatExperienceXml(experienceInputs, templateStyleMap),
+      certifications: formatCertificationsXml(finalCertifications, templateStyleMap),
 
       education_items: educationItems,
       experience_items: experienceItems,
