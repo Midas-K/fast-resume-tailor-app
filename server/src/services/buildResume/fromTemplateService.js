@@ -6,14 +6,7 @@ const PizZip = require("pizzip");
 const Docxtemplater = require("docxtemplater");
 const pool = require("../../db");
 const { parseJsonField } = require("../../utils/parse");
-const {
-  extractTemplateStyleMap,
-  getSectionStyles,
-  mergeTemplateRunProperties,
-  cleanTemplatePPrForBulletLine,
-} = require("./docxTemplateStyles");
-
-const BULLET_CHAR = "\u2022";
+const { extractPlaceholderStyles } = require("./templateStyles");
 
 const DOCX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -134,126 +127,183 @@ const parseBoldSegments = (text, options = {}) => {
   return rebuilt.filter((segment) => segment.text);
 };
 
-const makeRunXml = ({ text, bold = null, templateRPr = "" }) => {
-  const safeText = escapeXml(text);
-  const rPrBlock = mergeTemplateRunProperties(templateRPr, { bold });
+const createXmlBuilders = (templateStyles = {}) => {
+  const getStyle = (styleKey) => templateStyles[styleKey] || {};
 
-  return `
+  const mergeBoldIntoRPr = (baseRPr, bold) => {
+    if (!bold) {
+      return baseRPr || "";
+    }
+
+    if (baseRPr && /<w:b(?:\/>|>)/.test(baseRPr)) {
+      return baseRPr;
+    }
+
+    return `${baseRPr || ""}<w:b/>`;
+  };
+
+  const buildFallbackPPrContent = ({ bullet, justify }) => {
+    const parts = [];
+
+    if (bullet) {
+      parts.push(
+        `<w:pStyle w:val="ListParagraph"/>
+        <w:numPr>
+          <w:ilvl w:val="0"/>
+          <w:numId w:val="${BULLET_NUM_ID}"/>
+        </w:numPr>
+        <w:ind w:left="360" w:hanging="180"/>`
+      );
+    }
+
+    if (justify) {
+      parts.push('<w:jc w:val="both"/>');
+    }
+
+    parts.push('<w:spacing w:after="80"/>');
+
+    return parts.join("");
+  };
+
+  const makeRunXml = ({ text, bold = false, styleKey = "SUMMARY" }) => {
+    const baseRPr = getStyle(styleKey).baseRPr || "";
+    const rPr = mergeBoldIntoRPr(baseRPr, bold);
+
+    return `
     <w:r>
-      ${rPrBlock}
-      <w:t xml:space="preserve">${safeText}</w:t>
+      <w:rPr>${rPr}</w:rPr>
+      <w:t xml:space="preserve">${escapeXml(text)}</w:t>
     </w:r>
   `;
-};
+  };
 
-const makeParagraphXml = ({
-  text = "",
-  bold = null,
-  bullet = false,
-  justify = true,
-  boldBeforeColon = false,
-  sectionStyles = null,
-}) => {
-  const cleanText = bullet ? stripBullet(text) : String(text || "").trim();
+  const compactBulletPPr = (pPrInner = "") => {
+    if (!pPrInner) {
+      return pPrInner;
+    }
 
-  if (!cleanText) return "";
+    return pPrInner.replace(/<w:tabs>[\s\S]*?<\/w:tabs>/g, "").trim();
+  };
 
-  const templatePPr = sectionStyles?.pPr || "";
-  const templateRPr = sectionStyles?.rPr || "";
+  const BULLET_GAP = "  ";
 
-  const segments = bold === true
-    ? [{ text: cleanText, bold: true }]
-    : parseBoldSegments(cleanText, { boldBeforeColon });
+  const makeBulletPrefixedRuns = ({ text, styleKey }) => {
+    const baseRPr = getStyle(styleKey).baseRPr || "";
 
-  if (bullet) {
-    const pPrBlock = cleanTemplatePPrForBulletLine(templatePPr, justify);
-    const bulletRun = makeRunXml({
-      text: `${BULLET_CHAR} `,
-      bold: null,
-      templateRPr,
-    });
-    const textRuns = segments
-      .map((segment) =>
-        makeRunXml({
-          text: segment.text,
-          bold: segment.bold ? true : bold === false ? false : null,
-          templateRPr,
+    return `
+    <w:r>
+      <w:rPr>${baseRPr}</w:rPr>
+      <w:t xml:space="preserve">•${BULLET_GAP}${escapeXml(text)}</w:t>
+    </w:r>
+  `;
+  };
+
+  const makeParagraphXml = ({
+    text = "",
+    bold = false,
+    bullet = false,
+    justify = true,
+    boldBeforeColon = false,
+    styleKey = "SUMMARY",
+  }) => {
+    const cleanText = bullet ? stripBullet(text) : String(text || "").trim();
+
+    if (!cleanText) return "";
+
+    const templatePPr = getStyle(styleKey).pPrInner;
+    const templateHasWordBullets = /<w:numPr>/.test(templatePPr || "");
+    const useTextBullet =
+      bullet && templatePPr && !templateHasWordBullets && !bold;
+
+    let bodyRuns = "";
+
+    if (useTextBullet && !boldBeforeColon && !/\*\*/.test(cleanText)) {
+      bodyRuns = makeBulletPrefixedRuns({
+        text: cleanText,
+        styleKey,
+      });
+    } else {
+      const segments = bold
+        ? [{ text: cleanText, bold: true }]
+        : parseBoldSegments(cleanText, { boldBeforeColon });
+
+      bodyRuns = segments
+        .map((segment, index) => {
+          const run = makeRunXml({
+            text: segment.text,
+            bold: segment.bold,
+            styleKey,
+          });
+
+          if (useTextBullet && index === 0) {
+            const baseRPr = getStyle(styleKey).baseRPr || "";
+
+            return `
+    <w:r>
+      <w:rPr>${baseRPr}</w:rPr>
+      <w:t xml:space="preserve">•${BULLET_GAP}</w:t>
+    </w:r>${run}`;
+          }
+
+          return run;
+        })
+        .join("");
+    }
+
+    let pPrContent = templatePPr
+      ? templatePPr
+      : buildFallbackPPrContent({ bullet, justify });
+
+    if (useTextBullet && templatePPr) {
+      pPrContent = compactBulletPPr(templatePPr);
+    }
+
+    return `
+    <w:p>
+      <w:pPr>${pPrContent}</w:pPr>
+      ${bodyRuns}
+    </w:p>
+  `;
+  };
+
+  const makeBlankParagraphXml = () => {
+    return `
+    <w:p>
+      <w:pPr>
+        <w:spacing w:after="80"/>
+      </w:pPr>
+    </w:p>
+  `;
+  };
+
+  const makeSectionXmlFromLines = ({
+    lines,
+    bullet = false,
+    boldBeforeColon = false,
+    justify = true,
+    styleKey = "SUMMARY",
+  }) => {
+    return lines
+      .map((line) =>
+        makeParagraphXml({
+          text: line,
+          bullet,
+          boldBeforeColon,
+          justify,
+          styleKey,
         })
       )
       .join("");
+  };
 
-    return `
-    <w:p>
-      ${pPrBlock}
-      ${bulletRun}${textRuns}
-    </w:p>
-  `;
-  }
-
-  const bodyRuns = segments
-    .map((segment) =>
-      makeRunXml({
-        text: segment.text,
-        bold: segment.bold ? true : bold === false ? false : null,
-        templateRPr,
-      })
-    )
-    .join("");
-
-  if (templatePPr) {
-    return `
-    <w:p>
-      ${templatePPr}
-      ${bodyRuns}
-    </w:p>
-  `;
-  }
-
-  return `
-    <w:p>
-      <w:pPr>
-        ${justify ? '<w:jc w:val="both"/>' : ""}
-        <w:spacing w:after="80"/>
-      </w:pPr>
-      ${bodyRuns}
-    </w:p>
-  `;
+  return {
+    makeParagraphXml,
+    makeBlankParagraphXml,
+    makeSectionXmlFromLines,
+  };
 };
 
-const makeBlankParagraphXml = () => {
-  return `
-    <w:p>
-      <w:pPr>
-        <w:spacing w:after="80"/>
-      </w:pPr>
-    </w:p>
-  `;
-};
-
-const makeSectionXmlFromLines = ({
-  lines,
-  bullet = false,
-  boldBeforeColon = false,
-  justify = true,
-  styleKey = "",
-  styleMap = null,
-}) => {
-  const sectionStyles = styleKey
-    ? getSectionStyles(styleMap, styleKey)
-    : null;
-
-  return lines
-    .map((line) =>
-      makeParagraphXml({
-        text: line,
-        bullet,
-        boldBeforeColon,
-        justify,
-        sectionStyles,
-      })
-    )
-    .join("");
-};
+const defaultXmlBuilders = createXmlBuilders();
 
 const buildContact = ({ email, location, phone, links }) => {
   return [email, location, phone, links]
@@ -377,7 +427,11 @@ const formatEducationItems = (educationValue, profileLocation = "") => {
   });
 };
 
-const formatExperienceItems = (experienceInputs, profileLocation = "", styleMap = null) => {
+const formatExperienceItems = (
+  experienceInputs,
+  profileLocation = "",
+  xml = defaultXmlBuilders
+) => {
   if (!Array.isArray(experienceInputs)) return [];
 
   return experienceInputs.map((item) => {
@@ -395,12 +449,11 @@ const formatExperienceItems = (experienceInputs, profileLocation = "", styleMap 
       .filter((value) => value && String(value).trim())
       .join(" - ");
 
-    const detailsXml = makeSectionXmlFromLines({
+    const detailsXml = xml.makeSectionXmlFromLines({
       lines: detailsLines,
       bullet: true,
       justify: true,
       styleKey: "DETAILS",
-      styleMap,
     });
 
     return {
@@ -424,14 +477,12 @@ const formatExperienceItems = (experienceInputs, profileLocation = "", styleMap 
   });
 };
 
-const formatEducationXml = (educationValue, styleMap = null) => {
+const formatEducationXml = (educationValue, xml = defaultXmlBuilders) => {
   const educationItems = formatEducationItems(educationValue);
 
   if (educationItems.length === 0) {
     return "";
   }
-
-  const sectionStyles = getSectionStyles(styleMap, "EDUCATION", "EDUCATION_SCHOOL");
 
   return educationItems
     .map((item) => {
@@ -443,74 +494,61 @@ const formatEducationXml = (educationValue, styleMap = null) => {
         ? `${lineOne} | ${item.TIMELINE}`
         : lineOne;
 
-      return makeParagraphXml({
+      return xml.makeParagraphXml({
         text: finalLine,
         justify: true,
-        sectionStyles,
+        styleKey: "EDUCATION",
       });
     })
     .join("");
 };
 
-const formatSummaryXml = (summary, styleMap = null) => {
+const formatSummaryXml = (summary, xml = defaultXmlBuilders) => {
   const lines = splitCleanLines(summary);
 
   if (lines.length === 0) return "";
 
-  return makeSectionXmlFromLines({
+  return xml.makeSectionXmlFromLines({
     lines,
     bullet: false,
     justify: true,
     styleKey: "SUMMARY",
-    styleMap,
   });
 };
 
-const formatSkillsXml = (skills, styleMap = null) => {
+const formatSkillsXml = (skills, xml = defaultXmlBuilders) => {
   const lines = splitCleanLines(skills).map(stripBullet);
 
   if (lines.length === 0) return "";
 
-  return makeSectionXmlFromLines({
+  return xml.makeSectionXmlFromLines({
     lines,
     bullet: true,
     boldBeforeColon: true,
     justify: true,
     styleKey: "SKILLS",
-    styleMap,
   });
 };
 
-const formatCertificationsXml = (certifications, styleMap = null) => {
+const formatCertificationsXml = (certifications, xml = defaultXmlBuilders) => {
   const lines = splitCleanLines(certifications).map(stripBullet);
 
   if (lines.length === 0) return "";
 
-  return makeSectionXmlFromLines({
+  return xml.makeSectionXmlFromLines({
     lines,
     bullet: true,
     justify: true,
     styleKey: "CERTIFICATIONS",
-    styleMap,
   });
 };
 
-const formatExperienceXml = (experienceInputs, styleMap = null) => {
-  const experienceItems = formatExperienceItems(
-    experienceInputs,
-    "",
-    styleMap
-  );
+const formatExperienceXml = (experienceInputs, xml = defaultXmlBuilders) => {
+  const experienceItems = formatExperienceItems(experienceInputs, "", xml);
 
   if (experienceItems.length === 0) {
     return "";
   }
-
-  const headerStyles = getSectionStyles(
-    styleMap,
-    "EXPERIENCE_HEADER",
-    "EXPERIENCE"
-  );
 
   return experienceItems
     .map((item) => {
@@ -518,14 +556,14 @@ const formatExperienceXml = (experienceInputs, styleMap = null) => {
         ? `${item.TITLE_COMPANY} | ${item.TIMELINE}`
         : item.TITLE_COMPANY;
 
-      const headerXml = makeParagraphXml({
+      const headerXml = xml.makeParagraphXml({
         text: header,
         bold: true,
         justify: false,
-        sectionStyles: headerStyles,
+        styleKey: "EXPERIENCE",
       });
 
-      return `${headerXml}${item.DETAILS}${makeBlankParagraphXml()}`;
+      return `${headerXml}${item.DETAILS}${xml.makeBlankParagraphXml()}`;
     })
     .join("");
 };
@@ -547,7 +585,7 @@ const ensureBulletNumberingXml = (zip) => {
         <w:tabs>
           <w:tab w:val="num" w:pos="360"/>
         </w:tabs>
-        <w:ind w:left="0" w:hanging="360"/>
+        <w:ind w:left="360" w:hanging="180"/>
       </w:pPr>
       <w:rPr>
         <w:rFonts w:ascii="Symbol" w:hAnsi="Symbol" w:hint="default"/>
@@ -712,14 +750,15 @@ async function buildResumeFromTemplate({ user, body }) {
 
     const finalCertifications = certification || certifications || "";
 
+    const templateStyles = extractPlaceholderStyles(template.file_data);
+    const xml = createXmlBuilders(templateStyles);
+
     const contact = buildContact({
       email: profile.email,
       location: profile.location,
       phone: profile.phone,
       links,
     });
-
-    const templateStyleMap = extractTemplateStyleMap(template.file_data);
 
     const educationItems = formatEducationItems(
       profile.education,
@@ -729,7 +768,7 @@ async function buildResumeFromTemplate({ user, body }) {
     const experienceItems = formatExperienceItems(
       experienceInputs,
       profile.location,
-      templateStyleMap
+      xml
     );
 
     const data = {
@@ -741,11 +780,11 @@ async function buildResumeFromTemplate({ user, body }) {
       LINKS: links || "",
       CONTACT: contact,
 
-      SUMMARY: formatSummaryXml(summary, templateStyleMap),
-      EDUCATION: formatEducationXml(profile.education, templateStyleMap),
-      SKILLS: formatSkillsXml(skills, templateStyleMap),
-      EXPERIENCE: formatExperienceXml(experienceInputs, templateStyleMap),
-      CERTIFICATIONS: formatCertificationsXml(finalCertifications, templateStyleMap),
+      SUMMARY: formatSummaryXml(summary, xml),
+      EDUCATION: formatEducationXml(profile.education, xml),
+      SKILLS: formatSkillsXml(skills, xml),
+      EXPERIENCE: formatExperienceXml(experienceInputs, xml),
+      CERTIFICATIONS: formatCertificationsXml(finalCertifications, xml),
 
       EDUCATION_ITEMS: educationItems,
       EXPERIENCE_ITEMS: experienceItems,
@@ -758,11 +797,11 @@ async function buildResumeFromTemplate({ user, body }) {
       links: links || "",
       contact,
 
-      summary: formatSummaryXml(summary, templateStyleMap),
-      education: formatEducationXml(profile.education, templateStyleMap),
-      skills: formatSkillsXml(skills, templateStyleMap),
-      experience: formatExperienceXml(experienceInputs, templateStyleMap),
-      certifications: formatCertificationsXml(finalCertifications, templateStyleMap),
+      summary: formatSummaryXml(summary, xml),
+      education: formatEducationXml(profile.education, xml),
+      skills: formatSkillsXml(skills, xml),
+      experience: formatExperienceXml(experienceInputs, xml),
+      certifications: formatCertificationsXml(finalCertifications, xml),
 
       education_items: educationItems,
       experience_items: experienceItems,
