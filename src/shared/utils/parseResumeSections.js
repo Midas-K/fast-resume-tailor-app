@@ -79,7 +79,17 @@ const SECTION_DEFINITIONS = [
 ];
 
 const TIMELINE_PATTERN =
-  /(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\s*[-–—]\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|Present|Current))|(?:\d{4}\s*[-–—]\s*(?:\d{4}|Present|Current))/i;
+  /(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?,?\s+\d{4}\s*[-–—]\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?,?\s+\d{4}|Present|Current))|(?:\d{4}\s*[-–—]\s*(?:\d{4}|Present|Current))/i;
+
+const normalizeTimelineInput = (text = "") => {
+  return stripMarkdownInline(text)
+    .replace(
+      /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s*,\s*(\d{4})\b/gi,
+      "$1 $2"
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+};
 
 const JOB_TITLE_HINT =
   /\b(engineer|scientist|developer|architect|manager|analyst|consultant|director|lead|specialist|programmer|designer)\b/i;
@@ -208,7 +218,8 @@ const isDividerLine = (line = "") => {
   );
 };
 
-export const isTimelineText = (text = "") => TIMELINE_PATTERN.test(String(text).trim());
+export const isTimelineText = (text = "") =>
+  TIMELINE_PATTERN.test(normalizeTimelineInput(text));
 
 const isEducationHeader = (line = "") => {
   const normalized = normalizeHeaderLine(line);
@@ -232,8 +243,9 @@ export const normalizeCompareText = (value = "") => {
 };
 
 export const normalizeTimelineText = (value = "") => {
-  return normalizeCompareText(value)
+  return normalizeCompareText(normalizeTimelineInput(value))
     .replace(/\bcurrent\b/g, "present")
+    .replace(/,\s*/g, " ")
     .replace(/\s*-\s*/g, " - ")
     .replace(/\s+/g, " ")
     .trim();
@@ -244,7 +256,15 @@ export const compareTextsExactly = (left = "", right = "") => {
 };
 
 export const normalizeDegreeText = (value = "") => {
-  return normalizeCompareText(value)
+  let text = normalizeCompareText(value);
+
+  const parts = text.split(/\s*\|\s*/).map((part) => part.trim()).filter(Boolean);
+
+  if (parts.length > 1 && isTimelineText(parts[parts.length - 1])) {
+    text = parts.slice(0, -1).join(" ");
+  }
+
+  return text
     .replace(
       /\b(bachelor|master|doctor|associate)([^,]*)\s*,\s*/g,
       "$1$2 in "
@@ -393,6 +413,19 @@ const parseTitleAtCompanyLine = (line = "") => {
 
 export const parseSchoolDegreeLine = (line = "") => {
   const trimmed = stripMarkdownInline(line);
+  const schoolDegreeTimeline = parseSchoolDegreeTimelineLine(trimmed);
+
+  if (schoolDegreeTimeline) {
+    return {
+      school: schoolDegreeTimeline.school,
+      degree: schoolDegreeTimeline.degree,
+    };
+  }
+
+  if ((trimmed.match(/\|/g) || []).length >= 2) {
+    return null;
+  }
+
   const match = trimmed.match(/^(.+?)\s*\|\s*(.+)$/);
 
   if (!match) {

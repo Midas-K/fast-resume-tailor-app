@@ -409,6 +409,65 @@ Bachelor of Science in Computer Science | Jan 2010 – Dec 2014
     });
   });
 
+  test("parses school degree timeline with comma-separated months", () => {
+    expect(
+      parseSchoolDegreeTimelineLine(
+        "University of South Florida | Bachelor of Science, Computer Science | Jan, 2014 - Dec, 2016"
+      )
+    ).toEqual({
+      school: "University of South Florida",
+      degree: "Bachelor of Science, Computer Science",
+      timeline: "Jan, 2014 - Dec, 2016",
+    });
+  });
+
+  test("validates school degree timeline single line against profile", () => {
+    const profile = {
+      experience: [],
+      education: [
+        {
+          school: "University of South Florida",
+          degree: "Bachelor of Science, Computer Science",
+          timeline: "Jan 2014 - Dec 2016",
+        },
+      ],
+    };
+
+    const validation = validatePastedResumeAgainstProfile({
+      rawText: `
+PROFESSIONAL SUMMARY
+ML engineer.
+
+SKILLS
+Python
+
+EDUCATION
+University of South Florida | Bachelor of Science, Computer Science | Jan, 2014 - Dec, 2016
+
+WORK EXPERIENCE
+Acme | Engineer | Jan 2020 - Present
+
+Built models.
+
+CERTIFICATIONS
+AWS Certified Machine Learning - Specialty
+`,
+      profile: {
+        ...profile,
+        experience: [
+          {
+            companyName: "Acme",
+            title: "Engineer",
+            timeline: "Jan 2020 - Present",
+          },
+        ],
+      },
+    });
+
+    expect(validation.isValid).toBe(true);
+    expect(validation.mismatches).toHaveLength(0);
+  });
+
   test("parses multiple schools with degree timeline lines and no blank lines", () => {
     const entries = parseEducationEntries(
       `
