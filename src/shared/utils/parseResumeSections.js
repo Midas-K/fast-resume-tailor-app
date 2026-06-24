@@ -243,6 +243,25 @@ export const compareTextsExactly = (left = "", right = "") => {
   return normalizeCompareText(left) === normalizeCompareText(right);
 };
 
+export const normalizeDegreeText = (value = "") => {
+  return normalizeCompareText(value)
+    .replace(
+      /\b(bachelor|master|doctor|associate)([^,]*)\s*,\s*/g,
+      "$1$2 in "
+    )
+    .replace(/\s+in\s+in\s+/g, " in ")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+export const compareDegreesExactly = (left = "", right = "") => {
+  if (compareTextsExactly(left, right)) {
+    return true;
+  }
+
+  return normalizeDegreeText(left) === normalizeDegreeText(right);
+};
+
 export const compareTimelinesExactly = (left = "", right = "") => {
   const normalizedLeft = normalizeTimelineText(left).replace(/\s/g, "");
   const normalizedRight = normalizeTimelineText(right).replace(/\s/g, "");
@@ -829,7 +848,7 @@ export const parseEducationBlockLines = (lines = [], profileHint = null) => {
         return;
       }
 
-      if (profileHint.degree && compareTextsExactly(line, profileHint.degree)) {
+      if (profileHint.degree && compareDegreesExactly(line, profileHint.degree)) {
         markHeuristicLine(index, "degree", line);
       }
     });
@@ -1979,7 +1998,7 @@ export const validateParsedResumeAgainstProfile = ({
       );
     }
 
-    if (!compareTextsExactly(profileEntry.degree, pastedEntry.degree)) {
+    if (!compareDegreesExactly(profileEntry.degree, pastedEntry.degree)) {
       addMismatch(
         mismatches,
         `${label} degree must match profile exactly ("${profileEntry.degree}" vs "${pastedEntry.degree}").`

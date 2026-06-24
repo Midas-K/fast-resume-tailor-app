@@ -6,6 +6,7 @@ import {
   normalizeSkillsContent,
   parseCompanyTimelineLine,
   parseCompanyTitleLine,
+  compareDegreesExactly,
   parseDegreeTimelineLine,
   parseEducationEntries,
   parseSchoolDegreeLine,
@@ -454,6 +455,69 @@ Jan 2010 – Dec 2014
     expect(entries[0].school).toBe("Stanford University");
     expect(entries[0].degree).toBe("Bachelor of Science in Computer Science");
     expect(entries[0].timeline).toMatch(/Jan 2010/i);
+  });
+
+  test("treats comma and in degree formats as equivalent", () => {
+    expect(
+      compareDegreesExactly(
+        "Bachelor of Science, Computer Science",
+        "Bachelor of Science in Computer Science"
+      )
+    ).toBe(true);
+    expect(
+      compareDegreesExactly(
+        "Master of Science, Artificial Intelligence",
+        "Master of Science in Artificial Intelligence"
+      )
+    ).toBe(true);
+  });
+
+  test("validates stanford degree timeline when profile uses comma degree format", () => {
+    const profile = {
+      experience: [],
+      education: [
+        {
+          school: "Stanford University",
+          degree: "Bachelor of Science, Computer Science",
+          timeline: "Jan 2010 - Dec 2014",
+        },
+      ],
+    };
+
+    const validation = validatePastedResumeAgainstProfile({
+      rawText: `
+PROFESSIONAL SUMMARY
+ML engineer.
+
+SKILLS
+Python
+
+EDUCATION
+Stanford University
+Bachelor of Science in Computer Science | Jan 2010 – Dec 2014
+
+WORK EXPERIENCE
+Acme | Engineer | Jan 2020 - Present
+
+Built models.
+
+CERTIFICATIONS
+AWS Certified Machine Learning - Specialty
+`,
+      profile: {
+        ...profile,
+        experience: [
+          {
+            companyName: "Acme",
+            title: "Engineer",
+            timeline: "Jan 2020 - Present",
+          },
+        ],
+      },
+    });
+
+    expect(validation.isValid).toBe(true);
+    expect(validation.mismatches.join(" ")).not.toMatch(/degree must match/i);
   });
 
   test("validates school plus degree timeline format against profile", () => {
