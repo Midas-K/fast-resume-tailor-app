@@ -316,6 +316,11 @@ export const parseCompanyTimelineLine = (line = "") => {
 
 export const parseCompanyTitleLine = (line = "") => {
   const trimmed = stripMarkdownInline(line);
+
+  if (!trimmed || isBulletLine(trimmed) || isExperienceBodyLine(trimmed)) {
+    return null;
+  }
+
   const match = trimmed.match(/^(.+?)\s*\|\s*(.+)$/);
 
   if (!match) {
@@ -357,6 +362,11 @@ export const parseCompanyTitleLine = (line = "") => {
 
 const parseTitleAtCompanyLine = (line = "") => {
   const trimmed = stripMarkdownInline(line);
+
+  if (!trimmed || isBulletLine(trimmed) || isExperienceBodyLine(trimmed)) {
+    return null;
+  }
+
   const match = trimmed.match(/^(.+?)\s+at\s+(.+)$/i);
 
   if (!match) {
@@ -370,15 +380,15 @@ const parseTitleAtCompanyLine = (line = "") => {
     return null;
   }
 
-  if (looksLikeJobTitleLine(left)) {
+  if (looksLikeJobTitleLine(left) && looksLikeCompanyName(right)) {
     return { title: left, company: right };
   }
 
-  if (looksLikeJobTitleLine(right)) {
+  if (looksLikeJobTitleLine(right) && looksLikeCompanyName(left)) {
     return { title: right, company: left };
   }
 
-  return { title: left, company: right };
+  return null;
 };
 
 export const parseSchoolDegreeLine = (line = "") => {
@@ -584,6 +594,35 @@ const looksLikeJobTitleLine = (line = "") => {
   );
 };
 
+const looksLikeCompanyName = (value = "") => {
+  const trimmed = stripMarkdownInline(value).trim();
+
+  if (!trimmed || trimmed.length < 2 || isTimelineText(trimmed)) {
+    return false;
+  }
+
+  if (!/[a-z]/i.test(trimmed)) {
+    return false;
+  }
+
+  if (/^\d/.test(trimmed)) {
+    return false;
+  }
+
+  if (
+    /^\d+(\.\d+)?\s*(fps|ms|hz|cm|mm|m|meter|meters|percent|%)\b/i.test(trimmed) ||
+    /^(fps|ms|hz|kb|mb|gb|tb)\b/i.test(trimmed)
+  ) {
+    return false;
+  }
+
+  if (trimmed.length > 120) {
+    return false;
+  }
+
+  return true;
+};
+
 const isExperienceBodyLine = (line = "") => {
   const trimmed = stripMarkdownInline(line);
 
@@ -595,7 +634,20 @@ const isExperienceBodyLine = (line = "") => {
     return true;
   }
 
-  return /[.!?]$/.test(trimmed) && trimmed.split(/\s+/).length >= 12;
+  if (
+    /\bat\s+\d/.test(trimmed) ||
+    /\bat\s+\d+(\.\d+)?\s*(fps|hz|ms|cm|mm|meter|meters|percent|%)\b/i.test(
+      trimmed
+    )
+  ) {
+    return true;
+  }
+
+  return /[.!?]$/.test(trimmed) && trimmed.split(/\s+/).length >= 8;
+};
+
+const looksLikeExperienceDetailLine = (line = "") => {
+  return isExperienceBodyLine(line);
 };
 
 const isExperienceHeaderLine = (line = "") => {
@@ -1159,9 +1211,9 @@ const findExperienceBlockMarkers = (lines = []) => {
   const markers = [];
 
   lines.forEach((line, lineIndex) => {
-    const trimmed = line.trim();
+    const trimmed = stripMarkdownInline(line).trim();
 
-    if (!trimmed) {
+    if (!trimmed || looksLikeExperienceDetailLine(trimmed)) {
       return;
     }
 
@@ -1177,35 +1229,41 @@ const findExperienceBlockMarkers = (lines = []) => {
       return;
     }
 
-    const companyTitle = parseCompanyTitleLine(trimmed);
+    if (trimmed.includes("|")) {
+      const companyTitle = parseCompanyTitleLine(trimmed);
 
-    if (companyTitle) {
-      markers.push({
-        lineIndex,
-        company: companyTitle.company,
-        title: companyTitle.title,
-        timeline: "",
-      });
-      return;
+      if (companyTitle) {
+        markers.push({
+          lineIndex,
+          company: companyTitle.company,
+          title: companyTitle.title,
+          timeline: "",
+        });
+        return;
+      }
+
+      const titleTimeline = parseTitleTimelineLine(trimmed);
+
+      if (titleTimeline && looksLikeJobTitleLine(titleTimeline.title)) {
+        markers.push({
+          lineIndex,
+          company: "",
+          timeline: titleTimeline.timeline,
+          title: titleTimeline.title,
+        });
+        return;
+      }
     }
 
-    const titleTimeline = parseTitleTimelineLine(trimmed);
-
-    if (titleTimeline && looksLikeJobTitleLine(titleTimeline.title)) {
+    if (
+      isTimelineText(trimmed) &&
+      !looksLikeJobTitleLine(trimmed) &&
+      trimmed.length <= 60
+    ) {
       markers.push({
         lineIndex,
         company: "",
-        timeline: titleTimeline.timeline,
-        title: titleTimeline.title,
-      });
-      return;
-    }
-
-    if (isTimelineText(trimmed) && !looksLikeJobTitleLine(trimmed)) {
-      markers.push({
-        lineIndex,
-        company: "",
-        timeline: stripMarkdownInline(trimmed),
+        timeline: trimmed,
         title: "",
       });
     }
@@ -1474,6 +1532,48 @@ export const fuzzyCompanyMatch = (left = "", right = "") => {
   const bWord = b.split(/\s+/)[0];
 
   return aWord.length > 2 && aWord === bWord;
+};
+
+const alignJobBlocksToProfile = (jobBlocks = [], profileExperience = []) => {
+  if (!profileExperience.length || jobBlocks.length <= profileExperience.length) {
+    return jobBlocks;
+  }
+
+  const matched = [];
+  const usedBlockIndexes = new Set();
+
+  profileExperience.forEach((profileEntry) => {
+    const profileName = getProfileCompanyName(profileEntry);
+
+    if (!profileName) {
+      return;
+    }
+
+    const matchedIndex = jobBlocks.findIndex(
+      (block, blockIndex) =>
+        !usedBlockIndexes.has(blockIndex) &&
+        fuzzyCompanyMatch(block.company, profileName)
+    );
+
+    if (matchedIndex === -1) {
+      return;
+    }
+
+    usedBlockIndexes.add(matchedIndex);
+    matched.push(jobBlocks[matchedIndex]);
+  });
+
+  if (matched.length === profileExperience.length) {
+    return matched;
+  }
+
+  const strongBlocks = jobBlocks.filter((block) => block.company && block.timeline);
+
+  if (strongBlocks.length === profileExperience.length) {
+    return strongBlocks;
+  }
+
+  return jobBlocks;
 };
 
 const mapJobBlocksToProfileCompanies = (jobBlocks = [], profileCompanyNames = []) => {
@@ -1878,8 +1978,8 @@ export const validateParsedResumeAgainstProfile = ({
   profileEducation = [],
 } = {}) => {
   const mismatches = [];
-  const pastedJobBlocks = splitExperienceIntoJobBlocks(
-    parsed?.experience || "",
+  const pastedJobBlocks = alignJobBlocksToProfile(
+    splitExperienceIntoJobBlocks(parsed?.experience || "", profileExperience),
     profileExperience
   );
   const pastedEducation = parsed?.educationEntries || [];

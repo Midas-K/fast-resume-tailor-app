@@ -682,6 +682,150 @@ Built lakehouse ML pipelines.
     expect(blocks[1].company).toBe("Databricks");
   });
 
+  test("parses markdown pipe job headers without counting bullet at-phrases as jobs", () => {
+    const profile = {
+      experience: [
+        {
+          companyName: "Meta",
+          title: "Staff Machine Learning Engineer",
+          timeline: "Oct 2023 - Present",
+        },
+        {
+          companyName: "Amazon",
+          title: "Senior Machine Learning Engineer",
+          timeline: "Feb 2020 - Sep 2023",
+        },
+        {
+          companyName: "Skysoft Inc.",
+          title: "Software Engineer (ML)",
+          timeline: "Jun 2016 - Jan 2020",
+        },
+      ],
+      education: [],
+    };
+
+    const validation = validatePastedResumeAgainstProfile({
+      rawText: `
+## Professional Summary
+Staff AI engineer.
+
+## Skills
+Python
+
+## Education
+University of Central Florida | Bachelor's Degree in Computer Science | Aug 2012 - May 2016
+
+## Work Experience
+
+**Meta | Staff Machine Learning Engineer | Oct 2023 - Present**
+
+- Architected map reconstruction achieving 99.2% lane boundary accuracy at 30 FPS on embedded hardware.
+
+---
+
+**Amazon | Senior Machine Learning Engineer | Feb 2020 - Sep 2023**
+
+- Designed large-scale ML pipelines for Amazon Robotics.
+
+---
+
+**Skysoft Inc. | Software Engineer (ML) | Jun 2016 - Jan 2020**
+
+- Developed computer vision systems achieving 94.5% accuracy at 30 FPS on embedded hardware.
+
+## Certifications
+AWS Certified Machine Learning - Specialty
+`,
+      profile,
+    });
+
+    expect(validation.mismatches.join(" ")).not.toMatch(/experience count must match/i);
+    expect(
+      splitExperienceIntoJobBlocks(
+        parseResumeSections(
+          `
+## Work Experience
+**Meta | Staff Machine Learning Engineer | Oct 2023 - Present**
+- Built systems at 30 FPS on embedded hardware.
+---
+**Amazon | Senior Machine Learning Engineer | Feb 2020 - Sep 2023**
+- Designed pipelines.
+---
+**Skysoft Inc. | Software Engineer (ML) | Jun 2016 - Jan 2020**
+- Developed CV at 30 FPS.
+`,
+          profile.experience
+        ).experience,
+        profile.experience
+      )
+    ).toHaveLength(3);
+  });
+
+  test("parses plain-text pipe job headers without counting accomplishment at-phrases", () => {
+    const profile = {
+      experience: [
+        {
+          companyName: "Meta",
+          title: "Staff Machine Learning Engineer",
+          timeline: "Oct 2023 - Present",
+        },
+        {
+          companyName: "Amazon",
+          title: "Senior Machine Learning Engineer",
+          timeline: "Feb 2020 - Sep 2023",
+        },
+        {
+          companyName: "Skysoft Inc.",
+          title: "Software Engineer (ML)",
+          timeline: "Jun 2016 - Jan 2020",
+        },
+      ],
+      education: [],
+    };
+
+    const rawText = `
+PROFESSIONAL SUMMARY
+Staff AI engineer.
+
+SKILLS
+Python
+
+EDUCATION
+University of Central Florida | Bachelor's Degree in Computer Science | Aug 2012 - May 2016
+
+WORK EXPERIENCE
+
+Meta | Staff Machine Learning Engineer | Oct 2023 - Present
+
+Architected map reconstruction achieving 99.2% lane boundary accuracy at 30 FPS on embedded hardware.
+
+Designed pipelines with 92% average utilization at peak processing windows.
+
+Amazon | Senior Machine Learning Engineer | Feb 2020 - Sep 2023
+
+Designed large-scale ML pipelines achieving 96.3% accuracy at 5cm error tolerance.
+
+Skysoft Inc. | Software Engineer (ML) | Jun 2016 - Jan 2020
+
+Developed computer vision systems achieving 94.5% accuracy at 30 FPS on embedded hardware.
+
+Achieving 2cm accuracy at 5-meter range for warehouse inventory mapping.
+
+CERTIFICATIONS
+AWS Certified Machine Learning - Specialty
+`;
+
+    const validation = validatePastedResumeAgainstProfile({ rawText, profile });
+
+    expect(validation.mismatches.join(" ")).not.toMatch(/experience count must match/i);
+    expect(
+      splitExperienceIntoJobBlocks(
+        parseResumeSections(rawText, profile.experience, []).experience,
+        profile.experience
+      )
+    ).toHaveLength(3);
+  });
+
   test("validatePastedResumeAgainstProfile fails when company or duration differs", () => {
     const profile = {
       experience: [
