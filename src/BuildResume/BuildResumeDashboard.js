@@ -5,18 +5,15 @@ import Icon from "../UI/Icon";
 import IconButton from "../UI/IconButton";
 import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
 import { fetchProfileById } from "../Profile/api/profileApi";
-import {
-  fetchDailyApplicationSequence,
-  saveApplication,
-} from "../shared/api/applicationsApi";
-import { API_URL, getToken } from "../shared/api/client";
+import { buildResumeFromProfile } from "../shared/api/buildResumeApi";
 import {
   canUseFolderPicker,
   changeCustomerRootFolder,
   FOLDER_PICKER_REQUIRED_MESSAGE,
   FOLDER_PICKER_USER_HINT,
   getLocalDayBounds,
-  resolveCustomerRootFolder,
+  getCachedCustomerRootFolder,
+  warmCustomerRootFolder,
   saveResumeToCustomerFolder,
 } from "../services/fileSystemSaveService";
 
@@ -40,6 +37,26 @@ function BuildResumeDashboard({
   useEffect(() => {
     setProfile(selectedProfile);
   }, [selectedProfile]);
+
+  useEffect(() => {
+    if (!canUseFolderPicker()) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    warmCustomerRootFolder()
+      .then(() => {
+        if (!cancelled) {
+          setSaveFolderReady(true);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedProfile?.id) {
@@ -122,75 +139,54 @@ function BuildResumeDashboard({
       return;
     }
 
-    let rootDirectoryHandle = null;
-
     try {
       setLoading(true);
 
-      const folderSelection = await resolveCustomerRootFolder();
-      rootDirectoryHandle = folderSelection.handle;
-      setSaveFolderReady(true);
-
-      const response = await fetch(`${API_URL}/api/build-resume/from-profile`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
-        },
-        body: JSON.stringify({
-          roleName: roleName.trim(),
-          companyName: companyName.trim(),
-          jobDescription: description.trim(),
-          profileId: profile.id,
-        }),
-      });
-
-      const contentType = response.headers.get("content-type") || "";
-
-      if (contentType.includes("application/json")) {
-        const result = await response.json();
-        throw new Error(result.message || "Could not build resume.");
-      }
-
-      if (!response.ok) {
-        throw new Error("Could not build resume.");
-      }
-
-      const templateNameFromServer =
-        response.headers.get("X-Resume-Template-Name") || templateLabel;
-      const usesDefaultTemplate =
-        response.headers.get("X-Resume-Uses-Default-Template") === "true";
-
-      const blob = await response.blob();
-      const arrayBuffer = await blob.arrayBuffer();
-      const pdfBytes = new Uint8Array(arrayBuffer);
-
       const { dayStart, dayEnd } = getLocalDayBounds();
-      const { sequenceNumber } = await fetchDailyApplicationSequence({
+      const buildPayload = {
         profileId: profile.id,
+        roleName: roleName.trim(),
+        companyName: companyName.trim(),
+        jobDescription: description.trim(),
         dayStart,
         dayEnd,
-      });
+        recordApplication: true,
+      };
+
+      const cachedFolder = getCachedCustomerRootFolder();
+      const folderPromise = cachedFolder
+        ? Promise.resolve(cachedFolder)
+        : warmCustomerRootFolder();
+
+      const [folderSelection, buildResult] = await Promise.all([
+        folderPromise,
+        buildResumeFromProfile(buildPayload),
+      ]);
+
+      const {
+        blob,
+        sequenceNumber,
+        templateName: templateNameFromServer,
+        usesDefaultTemplate,
+      } = buildResult;
+
+      setSaveFolderReady(true);
+
+      const pdfBytes = new Uint8Array(await blob.arrayBuffer());
 
       const saveResult = await saveResumeToCustomerFolder({
         pdfBytes,
         profileName: profile.name || "Profile",
         companyName: companyName.trim(),
         roleName: roleName.trim(),
-        applicationNumber: sequenceNumber,
-        rootDirectoryHandle,
-      });
-
-      await saveApplication({
-        profileId: profile.id,
-        roleName: roleName.trim(),
-        companyName: companyName.trim(),
+        applicationNumber: sequenceNumber || 1,
+        rootDirectoryHandle: folderSelection.handle,
       });
 
       resetApplicationInputs();
 
       alert(
-        `Resume saved to your laptop/computer!\n\nTemplate: ${templateNameFromServer}${
+        `Resume saved to your laptop/computer!\n\nTemplate: ${templateNameFromServer || templateLabel}${
           usesDefaultTemplate ? " (admin default)" : " (admin assigned)"
         }\nPath: ${saveResult.savedPath || `${saveResult.dateFolder}/${saveResult.companyRoleFolder}/${saveResult.fileName}`}`
       );

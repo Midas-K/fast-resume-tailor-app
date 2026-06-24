@@ -35,8 +35,12 @@ const decodeXmlEntities = (value) => {
 };
 
 const stripBullet = (line) => {
-  const text = String(line || "").trim();
-  return text.replace(/^[-•]\s+/, "").replace(/^\*\s+/, "").trim();
+  return String(line || "")
+    .trim()
+    .replace(/^[-•*●○◦+]\s+/, "")
+    .replace(/^\d+[.)]\s+/, "")
+    .replace(/^>\s+/, "")
+    .trim();
 };
 
 const extractTextFromDocxBuffer = (templateBuffer) => {

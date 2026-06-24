@@ -482,6 +482,100 @@ const createApplication = async (req) => {
   };
 };
 
+const assertApplicationIsNew = async ({
+  profileId,
+  userId,
+  companyName,
+  roleName,
+}) => {
+  const profileCheck = await pool.query(
+    `
+      SELECT id
+      FROM profiles
+      WHERE id = $1 AND user_id = $2
+    `,
+    [profileId, userId]
+  );
+
+  if (profileCheck.rows.length === 0) {
+    throw new HttpError(404, "Selected profile was not found.");
+  }
+
+  const normalizedCompany = String(companyName || "").trim().toLowerCase();
+  const normalizedRole = String(roleName || "").trim().toLowerCase();
+
+  const existingApplication = await pool.query(
+    `
+      SELECT id
+      FROM applications
+      WHERE profile_id = $1
+        AND normalized_company_name = $2
+        AND normalized_role_name = $3
+    `,
+    [profileId, normalizedCompany, normalizedRole]
+  );
+
+  if (existingApplication.rows.length > 0) {
+    throw new HttpError(
+      409,
+      "This profile already applied to this company and role."
+    );
+  }
+};
+
+const getDailySequenceNumber = async ({
+  profileId,
+  userId,
+  dayStart,
+  dayEnd,
+}) => {
+  const countResult = await pool.query(
+    `
+      SELECT COUNT(*)::int AS count
+      FROM applications
+      WHERE profile_id = $1
+        AND user_id = $2
+        AND created_at >= $3::timestamptz
+        AND created_at < $4::timestamptz
+    `,
+    [profileId, userId, dayStart, dayEnd]
+  );
+
+  return (countResult.rows[0]?.count || 0) + 1;
+};
+
+const recordApplicationAfterResume = async ({
+  userId,
+  profileId,
+  companyName,
+  roleName,
+}) => {
+  const normalizedCompany = String(companyName || "").trim().toLowerCase();
+  const normalizedRole = String(roleName || "").trim().toLowerCase();
+
+  await pool.query(
+    `
+      INSERT INTO applications (
+        user_id,
+        profile_id,
+        company_name,
+        role_name,
+        normalized_company_name,
+        normalized_role_name
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `,
+    [
+      userId,
+      profileId,
+      String(companyName || "").trim(),
+      String(roleName || "").trim(),
+      normalizedCompany,
+      normalizedRole,
+    ]
+  );
+};
+
 module.exports = {
   getAdminSummary,
   getAdminProfileCounts,
@@ -491,4 +585,7 @@ module.exports = {
   getProfileApplications,
   getDailyApplicationSequence,
   createApplication,
+  assertApplicationIsNew,
+  getDailySequenceNumber,
+  recordApplicationAfterResume,
 };

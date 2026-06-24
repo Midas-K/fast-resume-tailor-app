@@ -64,6 +64,10 @@ function App() {
       return;
     }
 
+    if (selectedProfile.experience && selectedProfile.education) {
+      return;
+    }
+
     let cancelled = false;
 
     fetchProfileById(selectedProfile.id)

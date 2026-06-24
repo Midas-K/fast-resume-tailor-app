@@ -7,6 +7,11 @@ const Docxtemplater = require("docxtemplater");
 const pool = require("../../db");
 const { parseJsonField } = require("../../utils/parse");
 const {
+  assertApplicationIsNew,
+  getDailySequenceNumber,
+  recordApplicationAfterResume,
+} = require("../applications/applicationService");
+const {
   extractPlaceholderStyles,
   extractBulletListConfig,
   normalizePPrInner,
@@ -20,6 +25,25 @@ const DOCX_MIME_TYPE =
 
 const BULLET_NUM_ID = "99";
 const BULLET_ABSTRACT_NUM_ID = "99";
+
+const templatePrepCache = new Map();
+
+const getTemplatePrep = (templateId, fileData) => {
+  const cacheKey = String(templateId);
+
+  if (templatePrepCache.has(cacheKey)) {
+    return templatePrepCache.get(cacheKey);
+  }
+
+  const prep = {
+    templateStyles: extractPlaceholderStyles(fileData),
+    bulletConfig: extractBulletListConfig(fileData),
+  };
+
+  templatePrepCache.set(cacheKey, prep);
+
+  return prep;
+};
 
 const sanitizeFileName = (value, fallback = "resume") => {
   const clean = String(value || "")
@@ -40,9 +64,16 @@ const escapeXml = (value) => {
 };
 
 const stripBullet = (line) => {
-  const text = String(line || "").trim();
+  return String(line || "")
+    .trim()
+    .replace(/^[-•*●○◦+]\s+/, "")
+    .replace(/^\d+[.)]\s+/, "")
+    .replace(/^>\s+/, "")
+    .trim();
+};
 
-  return text.replace(/^[-•]\s+/, "").replace(/^\*\s+/, "").trim();
+const splitBulletLines = (value) => {
+  return splitCleanLines(value).map(stripBullet).filter(Boolean);
 };
 
 const splitCleanLines = (value) => {
@@ -142,6 +173,19 @@ const createXmlBuilders = (templateStyles = {}, bulletConfig = {}) => {
     hanging: bulletConfig.hanging || "360",
   };
 
+  const getSectionNumId = (styleKey) => {
+    const templatePPr = getStyle(styleKey).pPrInner || "";
+    const match = templatePPr.match(
+      /<w:numPr>[\s\S]*?<w:numId w:val="(\d+)"/
+    );
+
+    if (match) {
+      return match[1];
+    }
+
+    return listConfig.numId;
+  };
+
   const mergeBoldIntoRPr = (baseRPr, bold) => {
     if (!bold) {
       return baseRPr || "";
@@ -197,23 +241,18 @@ const createXmlBuilders = (templateStyles = {}, bulletConfig = {}) => {
     return String(referenceLeft + hanging);
   };
 
-  const setBulletIndentLeft = (pPrInner = "", left) => {
-    const hanging = listConfig.hanging;
-    const indXml = `<w:ind w:left="${left}" w:hanging="${hanging}"/>`;
-
-    if (/<w:ind[^/]*\/>/.test(pPrInner)) {
-      return pPrInner.replace(/<w:ind[^/]*\/>/, indXml);
-    }
-
-    return `${pPrInner}${indXml}`;
-  };
-
-  const buildWordBulletPPr = ({ templatePPr, justify, left }) => {
+  const buildWordBulletPPr = ({
+    templatePPr,
+    justify,
+    left,
+    styleKey = "SUMMARY",
+  }) => {
     const bulletLeft = left || listConfig.left;
+    const sectionNumId = getSectionNumId(styleKey);
     const extras = templatePPr ? extractTemplateParagraphExtras(templatePPr) : "";
     const parts = [
       '<w:pStyle w:val="ListParagraph"/>',
-      `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${listConfig.numId}"/></w:numPr>`,
+      `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${sectionNumId}"/></w:numPr>`,
       `<w:ind w:left="${bulletLeft}" w:hanging="${listConfig.hanging}"/>`,
       extras,
     ];
@@ -229,12 +268,18 @@ const createXmlBuilders = (templateStyles = {}, bulletConfig = {}) => {
     return parts.filter(Boolean).join("");
   };
 
-  const buildFallbackPPrContent = ({ bullet, justify, templatePPr }) => {
+  const buildFallbackPPrContent = ({
+    bullet,
+    justify,
+    templatePPr,
+    styleKey = "SUMMARY",
+  }) => {
     if (bullet) {
       return buildWordBulletPPr({
         templatePPr: templatePPr || "",
         justify,
         left: computeBulletLeft(templatePPr),
+        styleKey,
       });
     }
 
@@ -322,24 +367,22 @@ const createXmlBuilders = (templateStyles = {}, bulletConfig = {}) => {
     let pPrContent;
 
     if (bullet) {
-      const bulletLeft = computeBulletLeft(templatePPr);
-
       if (templateHasWordBullets) {
-        pPrContent = setBulletIndentLeft(
-          normalizePPrInner(templatePPr),
-          bulletLeft
-        );
+        // Clone the template list paragraph exactly (ListParagraph + numPr).
+        // FULL.docx-style templates already define the bullet in the placeholder row.
+        pPrContent = normalizePPrInner(templatePPr);
       } else {
         pPrContent = buildWordBulletPPr({
           templatePPr,
           justify,
-          left: bulletLeft,
+          left: computeBulletLeft(templatePPr),
+          styleKey,
         });
       }
     } else {
       pPrContent = templatePPr
         ? normalizePPrInner(templatePPr)
-        : buildFallbackPPrContent({ bullet: false, justify });
+        : buildFallbackPPrContent({ bullet: false, justify, styleKey });
     }
 
     return `
@@ -402,6 +445,10 @@ const runLibreOfficeConvert = (inputPath, outputDir) => {
       "libreoffice",
       [
         "--headless",
+        "--norestore",
+        "--nologo",
+        "--nodefault",
+        "--nofirststartwizard",
         "--convert-to",
         "pdf",
         "--outdir",
@@ -523,7 +570,7 @@ const formatExperienceItems = (
     const title = item.title || "";
     const timeline = item.timeline || "";
     const location = item.location || profileLocation || "";
-    const detailsLines = splitCleanLines(item.details).map(stripBullet);
+    const detailsLines = splitBulletLines(item.details);
 
     const titleCompany = [title, companyName]
       .filter((value) => value && String(value).trim())
@@ -601,7 +648,7 @@ const formatSummaryXml = (summary, xml = defaultXmlBuilders) => {
 };
 
 const formatSkillsXml = (skills, xml = defaultXmlBuilders) => {
-  const lines = splitCleanLines(skills).map(stripBullet);
+  const lines = splitBulletLines(skills);
 
   if (lines.length === 0) return "";
 
@@ -615,7 +662,7 @@ const formatSkillsXml = (skills, xml = defaultXmlBuilders) => {
 };
 
 const formatCertificationsXml = (certifications, xml = defaultXmlBuilders) => {
-  const lines = splitCleanLines(certifications).map(stripBullet);
+  const lines = splitBulletLines(certifications);
 
   if (lines.length === 0) return "";
 
@@ -772,6 +819,14 @@ const createServiceError = (message, status) => {
   return Object.assign(new Error(message), { status });
 };
 
+const mapServiceError = (error) => {
+  if (error?.status && error?.message) {
+    throw createServiceError(error.message, error.status);
+  }
+
+  throw error;
+};
+
 async function buildResumeFromTemplate({ user, body }) {
   let tempDir = null;
 
@@ -786,6 +841,9 @@ async function buildResumeFromTemplate({ user, body }) {
       certifications,
       experienceInputs,
       links,
+      dayStart,
+      dayEnd,
+      recordApplication = true,
     } = body;
 
     if (!profileId) {
@@ -796,7 +854,7 @@ async function buildResumeFromTemplate({ user, body }) {
       throw createServiceError("Role name is required.", 400);
     }
 
-    const profileResult = await pool.query(
+    const profileQuery = pool.query(
       `
         SELECT
           id,
@@ -814,6 +872,41 @@ async function buildResumeFromTemplate({ user, body }) {
       `,
       [profileId, user.id]
     );
+
+    const sequenceQuery =
+      recordApplication && dayStart && dayEnd
+        ? getDailySequenceNumber({
+            profileId,
+            userId: user.id,
+            dayStart,
+            dayEnd,
+          })
+        : Promise.resolve(null);
+
+    let profileResult;
+    let sequenceNumber;
+
+    try {
+      if (recordApplication) {
+        [, profileResult, sequenceNumber] = await Promise.all([
+          assertApplicationIsNew({
+            profileId,
+            userId: user.id,
+            companyName,
+            roleName,
+          }),
+          profileQuery,
+          sequenceQuery,
+        ]);
+      } else {
+        [profileResult, sequenceNumber] = await Promise.all([
+          profileQuery,
+          sequenceQuery,
+        ]);
+      }
+    } catch (error) {
+      mapServiceError(error);
+    }
 
     if (profileResult.rows.length === 0) {
       throw createServiceError("Selected profile was not found.", 404);
@@ -839,8 +932,10 @@ async function buildResumeFromTemplate({ user, body }) {
 
     const finalCertifications = certification || certifications || "";
 
-    const templateStyles = extractPlaceholderStyles(template.file_data);
-    const bulletConfig = extractBulletListConfig(template.file_data);
+    const { templateStyles, bulletConfig } = getTemplatePrep(
+      template.id,
+      template.file_data
+    );
     const xml = createXmlBuilders(templateStyles, bulletConfig);
 
     const contact = buildContact({
@@ -917,6 +1012,19 @@ async function buildResumeFromTemplate({ user, body }) {
 
     const pdfBuffer = await fs.readFile(pdfPath);
 
+    if (recordApplication) {
+      try {
+        await recordApplicationAfterResume({
+          userId: user.id,
+          profileId,
+          companyName,
+          roleName,
+        });
+      } catch (error) {
+        mapServiceError(error);
+      }
+    }
+
     return {
       type: "pdf",
       buffer: pdfBuffer,
@@ -924,6 +1032,7 @@ async function buildResumeFromTemplate({ user, body }) {
       templateName: template.name,
       templateFileName: template.file_name,
       usesDefaultTemplate: !profile.resume_template_id,
+      sequenceNumber,
     };
   } finally {
     if (tempDir) {
@@ -940,7 +1049,15 @@ async function buildResumeFromTemplate({ user, body }) {
 }
 
 async function buildResumeFromProfile({ user, body }) {
-  const { profileId, roleName, companyName, jobDescription } = body;
+  const {
+    profileId,
+    roleName,
+    companyName,
+    jobDescription,
+    dayStart,
+    dayEnd,
+    recordApplication = true,
+  } = body;
 
   if (!profileId) {
     throw createServiceError("Profile is required.", 400);
@@ -1018,8 +1135,88 @@ async function buildResumeFromProfile({ user, body }) {
       skills: "",
       certification: "",
       experienceInputs,
+      dayStart,
+      dayEnd,
+      recordApplication,
     },
   });
 }
 
-module.exports = { buildResumeFromTemplate, buildResumeFromProfile };
+const buildDocxFromTemplateBuffer = ({
+  templateBuffer,
+  summary = "",
+  skills = "",
+  certification = "",
+  experienceInputs = [],
+  profile = {},
+  roleName = "",
+}) => {
+  const { templateStyles, bulletConfig } = {
+    templateStyles: extractPlaceholderStyles(templateBuffer),
+    bulletConfig: extractBulletListConfig(templateBuffer),
+  };
+  const xml = createXmlBuilders(templateStyles, bulletConfig);
+  const experienceItems = formatExperienceItems(
+    experienceInputs,
+    profile.location || "",
+    xml
+  );
+  const educationItems = formatEducationItems(
+    profile.education || [],
+    profile.location || ""
+  );
+  const finalCertifications = certification || "";
+
+  const data = {
+    FULL_NAME: profile.name || "",
+    TITLE: String(roleName || "").trim(),
+    EMAIL: profile.email || "",
+    LOCATION: profile.location || "",
+    PHONE: profile.phone || "",
+    LINKS: "",
+    CONTACT: buildContact({
+      email: profile.email,
+      location: profile.location,
+      phone: profile.phone,
+      links: "",
+    }),
+    SUMMARY: formatSummaryXml(summary, xml),
+    EDUCATION: formatEducationXml(profile.education, xml),
+    SKILLS: formatSkillsXml(skills, xml),
+    EXPERIENCE: formatExperienceXml(experienceInputs, xml),
+    CERTIFICATIONS: formatCertificationsXml(finalCertifications, xml),
+    EDUCATION_ITEMS: educationItems,
+    EXPERIENCE_ITEMS: experienceItems,
+    full_name: profile.name || "",
+    title: String(roleName || "").trim(),
+    email: profile.email || "",
+    location: profile.location || "",
+    phone: profile.phone || "",
+    links: "",
+    contact: buildContact({
+      email: profile.email,
+      location: profile.location,
+      phone: profile.phone,
+      links: "",
+    }),
+    summary: formatSummaryXml(summary, xml),
+    education: formatEducationXml(profile.education, xml),
+    skills: formatSkillsXml(skills, xml),
+    experience: formatExperienceXml(experienceInputs, xml),
+    certifications: formatCertificationsXml(finalCertifications, xml),
+    education_items: educationItems,
+    experience_items: experienceItems,
+  };
+
+  return createDocxBuffer({
+    templateBuffer,
+    data,
+    bulletConfig,
+  });
+};
+
+module.exports = {
+  buildResumeFromTemplate,
+  buildResumeFromProfile,
+  buildDocxFromTemplateBuffer,
+};

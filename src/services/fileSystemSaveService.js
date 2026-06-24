@@ -109,6 +109,20 @@ export const canUseFolderPicker = () => {
   return Boolean(window.showDirectoryPicker && window.isSecureContext);
 };
 
+let cachedRootFolderSelection = null;
+
+export const getCachedCustomerRootFolder = () => cachedRootFolderSelection;
+
+export const warmCustomerRootFolder = async () => {
+  if (cachedRootFolderSelection) {
+    return cachedRootFolderSelection;
+  }
+
+  const selection = await resolveCustomerRootFolder();
+  cachedRootFolderSelection = selection;
+  return selection;
+};
+
 const openDirectoryPicker = async () => {
   const pickerOptions = {
     id: "frt-customer-resume-root",
@@ -142,23 +156,29 @@ export const resolveCustomerRootFolder = async ({ forcePicker = false } = {}) =>
     const storedHandle = await getStoredCustomerRootHandle();
 
     if (storedHandle && (await verifyDirectoryHandlePermission(storedHandle))) {
-      return {
+      const selection = {
         handle: storedHandle,
         reusedSavedFolder: true,
       };
+      cachedRootFolderSelection = selection;
+      return selection;
     }
   }
 
   const handle = await openDirectoryPicker();
   await storeCustomerRootHandle(handle);
 
-  return {
+  const selection = {
     handle,
     reusedSavedFolder: false,
   };
+  cachedRootFolderSelection = selection;
+
+  return selection;
 };
 
 export const changeCustomerRootFolder = async () => {
+  cachedRootFolderSelection = null;
   await clearStoredCustomerRootHandle();
   return resolveCustomerRootFolder({ forcePicker: true });
 };

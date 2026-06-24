@@ -1,17 +1,18 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "../UI/Icon";
 import IconButton from "../UI/IconButton";
 import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
-import { API_URL, getToken } from "../shared/api/client";
-import { fetchDailyApplicationSequence } from "../shared/api/applicationsApi";
+import { buildResumeFromTemplate } from "../shared/api/buildResumeApi";
 import { parseJsonField } from "../shared/utils/format";
+import { parseAndValidateResumePaste } from "../shared/utils/parseResumeSections";
 import {
   canUseFolderPicker,
   changeCustomerRootFolder,
   FOLDER_PICKER_USER_HINT,
   FOLDER_PICKER_REQUIRED_MESSAGE,
   getLocalDayBounds,
-  resolveCustomerRootFolder,
+  getCachedCustomerRootFolder,
+  warmCustomerRootFolder,
   saveResumeToCustomerFolder,
 } from "../services/fileSystemSaveService";
 
@@ -21,99 +22,259 @@ function ResumeBuilderForm({
   selectedProfile,
   compact = false,
 }) {
-  const [summary, setSummary] = useState("");
-  const [skills, setSkills] = useState("");
-  const [certification, setCertification] = useState("");
-  const [experienceInputs, setExperienceInputs] = useState([]);
-  const [activeExperienceIndex, setActiveExperienceIndex] = useState(0);
-  const [activeSection, setActiveSection] = useState("summary");
+  const [wholeResumePaste, setWholeResumePaste] = useState("");
+  const [parseMeta, setParseMeta] = useState({
+    foundSections: [],
+    warnings: [],
+    isParsed: false,
+  });
+  const [profileMatch, setProfileMatch] = useState({
+    isValid: false,
+    mismatches: [],
+  });
   const [loading, setLoading] = useState(false);
   const [saveFolderReady, setSaveFolderReady] = useState(canUseFolderPicker());
+  const parsedSnapshotRef = useRef({
+    summary: "",
+    skills: "",
+    certification: "",
+    experienceInputs: [],
+    profileMatch: { isValid: false, mismatches: [] },
+  });
+  const lastParsedKeyRef = useRef("");
 
-  const resumeSections = [
-    { id: "profile", label: "Profile" },
-    { id: "summary", label: "Summary" },
-    { id: "skills", label: "Skills" },
-    { id: "experience", label: "Experience" },
-    { id: "cert", label: "Certifications" },
-  ];
-
-  const selectedEducation = parseJsonField(selectedProfile?.education);
-  const selectedExperience = parseJsonField(selectedProfile?.experience);
+  const selectedEducation = useMemo(
+    () => parseJsonField(selectedProfile?.education),
+    [selectedProfile?.education]
+  );
+  const selectedExperience = useMemo(
+    () => parseJsonField(selectedProfile?.experience),
+    [selectedProfile?.experience]
+  );
 
   useEffect(() => {
-    if (!selectedProfile) {
-      setExperienceInputs([]);
+    if (!canUseFolderPicker()) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    warmCustomerRootFolder()
+      .then(() => {
+        if (!cancelled) {
+          setSaveFolderReady(true);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const applyParsedSnapshot = (rawText, profile) => {
+    if (!rawText.trim() || !profile) {
+      parsedSnapshotRef.current = {
+        summary: "",
+        skills: "",
+        certification: "",
+        experienceInputs: parseJsonField(profile?.experience).map((item, index) => ({
+          id: index,
+          companyName: item.companyName || "",
+          title: item.title || "",
+          timeline: item.timeline || "",
+          location: item.location || profile?.location || "",
+          details: "",
+        })),
+        profileMatch: { isValid: false, mismatches: [] },
+      };
+      setParseMeta({
+        foundSections: [],
+        warnings: [],
+        isParsed: false,
+      });
+      setProfileMatch({ isValid: false, mismatches: [] });
       return;
     }
 
-    const profileExperience = parseJsonField(selectedProfile.experience);
+    const parsed = parseAndValidateResumePaste({
+      rawText,
+      profile,
+    });
 
-    const mappedExperience = profileExperience.map((item, index) => ({
-      id: index,
-      companyName: item.companyName || "",
-      title: item.title || "",
-      timeline: item.timeline || "",
-      location: item.location || selectedProfile.location || "",
-      details: "",
-    }));
+    parsedSnapshotRef.current = parsed;
+    lastParsedKeyRef.current = `${profile?.id || ""}:${rawText}`;
+    setParseMeta(parsed.parseMeta);
+    setProfileMatch(parsed.profileMatch);
+  };
 
-    setExperienceInputs(mappedExperience);
-    setActiveExperienceIndex(0);
-    setActiveSection("profile");
-  }, [selectedProfile]);
+  useEffect(() => {
+    applyParsedSnapshot(wholeResumePaste, selectedProfile);
+  }, [wholeResumePaste, selectedProfile]);
 
-  const updateExperienceDetails = (index, value) => {
-    const updated = [...experienceInputs];
-    updated[index].details = value;
-    setExperienceInputs(updated);
+  const getParsedForSave = () => {
+    const parseKey = `${selectedProfile?.id || ""}:${wholeResumePaste}`;
+
+    if (
+      parseKey === lastParsedKeyRef.current &&
+      parsedSnapshotRef.current.summary !== undefined
+    ) {
+      return parsedSnapshotRef.current;
+    }
+
+    const parsed = parseAndValidateResumePaste({
+      rawText: wholeResumePaste,
+      profile: selectedProfile,
+    });
+
+    parsedSnapshotRef.current = parsed;
+    lastParsedKeyRef.current = parseKey;
+    setParseMeta(parsed.parseMeta);
+    setProfileMatch(parsed.profileMatch);
+
+    return parsed;
   };
 
   const clearResumeInputs = () => {
-    setSummary("");
-    setSkills("");
-    setCertification("");
-    setExperienceInputs((previous) =>
-      previous.map((item) => ({
-        ...item,
-        details: "",
-      }))
+    setWholeResumePaste("");
+    applyParsedSnapshot("", selectedProfile);
+  };
+
+  const sectionStatusItems = [
+    { id: "summary", label: "Summary" },
+    { id: "skills", label: "Skills" },
+    {
+      id: "experience",
+      label: `Experience (${parsedSnapshotRef.current.experienceInputs.length || 0})`,
+    },
+    { id: "certifications", label: "Certifications" },
+  ];
+
+  const renderParseStatus = () => {
+    if (!wholeResumePaste.trim()) {
+      return (
+        <p className="resume-parse-hint">
+          Paste the full AI resume output once. For skills, experience
+          details, and certifications, paste plain sentences as you get them
+          from AI — with or without blank lines between lines. Each non-empty
+          line becomes one Word bullet in the saved PDF. Summary stays as
+          normal paragraphs. Education and experience company/title/duration
+          must match your profile exactly before saving.
+        </p>
+      );
+    }
+
+    return (
+      <div className="resume-parse-status">
+        <div className="resume-parse-status__chips">
+          {sectionStatusItems.map((item) => {
+            const found = parseMeta.foundSections.includes(item.id);
+
+            return (
+              <span
+                key={item.id}
+                className={
+                  found
+                    ? "resume-parse-chip resume-parse-chip--found"
+                    : "resume-parse-chip resume-parse-chip--missing"
+                }
+              >
+                <Icon name={found ? "checkCircle" : "info"} size={12} />
+                {item.label}
+              </span>
+            );
+          })}
+        </div>
+
+        {parseMeta.warnings.length > 0 && (
+          <p className="resume-parse-warning">{parseMeta.warnings[0]}</p>
+        )}
+
+        {wholeResumePaste.trim() && (
+          <div className="resume-profile-match">
+            <span
+              className={
+                profileMatch.isValid
+                  ? "resume-parse-chip resume-parse-chip--found"
+                  : "resume-parse-chip resume-parse-chip--missing"
+              }
+            >
+              <Icon name={profileMatch.isValid ? "checkCircle" : "info"} size={12} />
+              {profileMatch.isValid
+                ? "Profile safety check passed"
+                : "Profile safety check failed"}
+            </span>
+            {!profileMatch.isValid && profileMatch.mismatches.length > 0 && (
+              <p className="resume-parse-warning">
+                {profileMatch.mismatches[0]}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     );
   };
 
-  const saveApplicationAfterResumeSaved = async () => {
-    const token = getToken();
+  const renderWholeResumePaste = () => (
+    <>
+      {renderParseStatus()}
 
-    if (!token) {
-      throw new Error("Please login again.");
-    }
+      <div className="resume-input-group resume-input-group--grow">
+        <label htmlFor="wholeResumePaste">Paste full resume content *</label>
+        <textarea
+          id="wholeResumePaste"
+          className="resume-whole-paste-textarea"
+          value={wholeResumePaste}
+          onChange={(event) => setWholeResumePaste(event.target.value)}
+          placeholder={`Paste the complete resume content here.
 
-    const response = await fetch(`${API_URL}/api/applications`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        roleName: appliedRole.trim(),
-        companyName: appliedCompany.trim(),
-        profileId: selectedProfile?.id,
-      }),
-    });
+Example headings (any order, many spellings work):
+PROFESSIONAL SUMMARY
+SKILLS
+WORK EXPERIENCE
+CERTIFICATIONS
 
-    const result = await response.json();
+Paste plain sentences for skills, details, and certifications — however AI formats them.
+Company blocks like "Confluent | Nov 2024 - Present" are matched to your profile companies.`}
+        />
+      </div>
+    </>
+  );
 
-    if (!response.ok) {
-      throw new Error(result.message || "Could not save application.");
-    }
-
-    return result;
-  };
+  const renderSaveActions = () => (
+    <div className={compact ? "resume-form-footer resume-form-footer--solo" : "profile-actions"}>
+      <div className="resume-save-folder-note">
+        <Icon name="folder" size={14} />
+        <p>
+          {saveFolderReady
+            ? "Saves to a folder on your laptop or computer."
+            : FOLDER_PICKER_USER_HINT}
+        </p>
+        <IconButton
+          icon="folder"
+          label="Change save folder"
+          variant="ghost"
+          size="sm"
+          disabled={loading}
+          onClick={handleChangeSaveFolder}
+        />
+      </div>
+      <IconButton
+        icon="fileDown"
+        label={loading ? "Generating resume..." : "Save PDF resume"}
+        variant="primary"
+        size="lg"
+        loading={loading}
+        disabled={loading || (wholeResumePaste.trim() && !profileMatch.isValid)}
+        onClick={generateResumePdf}
+      />
+    </div>
+  );
 
   const validateRequiredFields = () => {
     if (!selectedProfile) {
       alert("Please select a job-bid profile first.");
-      return false;
+      return null;
     }
 
     if (
@@ -121,25 +282,34 @@ function ResumeBuilderForm({
       !String(appliedCompany || "").trim()
     ) {
       alert("Please enter role name and company name first.");
-      return false;
+      return null;
     }
 
-    if (!summary.trim()) {
+    if (!wholeResumePaste.trim()) {
+      alert(
+        "Paste the full resume content with section headings (Summary, Skills, Experience, Certifications)."
+      );
+      return null;
+    }
+
+    const parsed = getParsedForSave();
+
+    if (!parsed.summary.trim()) {
       alert("Summary is required.");
-      return false;
+      return null;
     }
 
-    if (!skills.trim()) {
+    if (!parsed.skills.trim()) {
       alert("Skills are required.");
-      return false;
+      return null;
     }
 
-    if (experienceInputs.length === 0) {
+    if (parsed.experienceInputs.length === 0) {
       alert("At least one profile experience is required.");
-      return false;
+      return null;
     }
 
-    const missingExperience = experienceInputs.some(
+    const missingExperience = parsed.experienceInputs.some(
       (item) => !item.details.trim()
     );
 
@@ -147,26 +317,30 @@ function ResumeBuilderForm({
       alert(
         "Experience details are required for every company in the selected profile."
       );
-      return false;
+      return null;
     }
 
-    if (!certification.trim()) {
+    if (!parsed.certification.trim()) {
       alert("Certifications are required.");
-      return false;
+      return null;
     }
 
-    return true;
+    if (!parsed.profileMatch.isValid) {
+      alert(
+        `Profile safety check failed. Experience and education must match your profile exactly before saving.\n\n${parsed.profileMatch.mismatches
+          .map((item) => `- ${item}`)
+          .join("\n")}`
+      );
+      return null;
+    }
+
+    return parsed;
   };
 
   const generateResumePdf = async () => {
-    if (!validateRequiredFields()) {
-      return;
-    }
+    const parsed = validateRequiredFields();
 
-    const token = getToken();
-
-    if (!token) {
-      alert("Please login again.");
+    if (!parsed) {
       return;
     }
 
@@ -175,71 +349,53 @@ function ResumeBuilderForm({
       return;
     }
 
-    let rootDirectoryHandle = null;
-
     try {
       setLoading(true);
 
-      /*
-        IMPORTANT:
-        Folder picker must open immediately from the user's button click.
-        If we wait until after fetch/blob, Chrome blocks it with:
-        "Must be handling a user gesture to show a file picker."
-      */
-      const folderSelection = await resolveCustomerRootFolder();
-      rootDirectoryHandle = folderSelection.handle;
-      setSaveFolderReady(true);
-
-      const response = await fetch(`${API_URL}/api/build-resume/from-template`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          profileId: selectedProfile.id,
-          roleName: appliedRole.trim(),
-          companyName: appliedCompany.trim(),
-          summary: summary.trim(),
-          skills: skills.trim(),
-          certification: certification.trim(),
-          experienceInputs: experienceInputs.map((item) => ({
-            ...item,
-            companyName: item.companyName || "",
-            title: item.title || "",
-            timeline: item.timeline || "",
-            location: item.location || selectedProfile.location || "",
-            details: item.details.trim(),
-          })),
-        }),
-      });
-
-      if (!response.ok) {
-        const result = await response.json().catch(() => null);
-        throw new Error(result?.message || "Could not generate resume PDF.");
-      }
-
-      const blob = await response.blob();
-      const arrayBuffer = await blob.arrayBuffer();
-      const pdfBytes = new Uint8Array(arrayBuffer);
-
       const { dayStart, dayEnd } = getLocalDayBounds();
-      const { sequenceNumber } = await fetchDailyApplicationSequence({
+      const buildPayload = {
         profileId: selectedProfile.id,
+        roleName: appliedRole.trim(),
+        companyName: appliedCompany.trim(),
+        summary: parsed.summary.trim(),
+        skills: parsed.skills.trim(),
+        certification: parsed.certification.trim(),
+        experienceInputs: parsed.experienceInputs.map((item) => ({
+          ...item,
+          companyName: item.companyName || "",
+          title: item.title || "",
+          timeline: item.timeline || "",
+          location: item.location || selectedProfile.location || "",
+          details: item.details.trim(),
+        })),
         dayStart,
         dayEnd,
-      });
+        recordApplication: true,
+      };
+
+      const cachedFolder = getCachedCustomerRootFolder();
+      const folderPromise = cachedFolder
+        ? Promise.resolve(cachedFolder)
+        : warmCustomerRootFolder();
+
+      const [folderSelection, { blob, sequenceNumber }] = await Promise.all([
+        folderPromise,
+        buildResumeFromTemplate(buildPayload),
+      ]);
+
+      const rootDirectoryHandle = folderSelection.handle;
+      setSaveFolderReady(true);
+
+      const pdfBytes = new Uint8Array(await blob.arrayBuffer());
 
       const saveResult = await saveResumeToCustomerFolder({
         pdfBytes,
         profileName: selectedProfile?.name || "Profile",
         companyName: appliedCompany?.trim() || "Unknown Company",
         roleName: appliedRole?.trim() || "Unknown Role",
-        applicationNumber: sequenceNumber,
+        applicationNumber: sequenceNumber || 1,
         rootDirectoryHandle,
       });
-
-      await saveApplicationAfterResumeSaved();
 
       clearResumeInputs();
 
@@ -387,261 +543,12 @@ function ResumeBuilderForm({
       )}
 
       <div className={compact ? "resume-form-body" : undefined}>
-        {compact ? (
-          <>
-            <div className="resume-section-tabs">
-              {resumeSections.map((section) => (
-                <button
-                  key={section.id}
-                  type="button"
-                  className={activeSection === section.id ? "active" : ""}
-                  onClick={() => setActiveSection(section.id)}
-                >
-                  {section.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="resume-paste-pane">
-              {activeSection === "profile" && (
-                <ProfileReferencePanel profile={selectedProfile} />
-              )}
-
-              {activeSection === "summary" && (
-                <div className="resume-input-group">
-                  <label htmlFor="summary">Summary *</label>
-                  <textarea
-                    id="summary"
-                    value={summary}
-                    onChange={(e) => setSummary(e.target.value)}
-                    placeholder="Paste summary here..."
-                  />
-                </div>
-              )}
-
-              {activeSection === "skills" && (
-                <div className="resume-input-group">
-                  <label htmlFor="skills">Skills *</label>
-                  <textarea
-                    id="skills"
-                    value={skills}
-                    onChange={(e) => setSkills(e.target.value)}
-                    placeholder="Paste categorized skills here..."
-                  />
-                </div>
-              )}
-
-              {activeSection === "experience" && (
-                <div className="experience-area experience-area-compact">
-                  {experienceInputs.length === 0 && (
-                    <div className="empty-profile-box">
-                      No company experience found in selected profile.
-                    </div>
-                  )}
-
-                  {experienceInputs.length > 0 && (
-                    <>
-                      {experienceInputs.length > 1 && (
-                        <div className="experience-tabs-compact">
-                          {experienceInputs.map((experience, index) => (
-                            <button
-                              key={experience.id}
-                              type="button"
-                              className={
-                                index === activeExperienceIndex ? "active" : ""
-                              }
-                              onClick={() => setActiveExperienceIndex(index)}
-                            >
-                              {experience.companyName || `Company ${index + 1}`}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {(() => {
-                        const experience =
-                          experienceInputs[activeExperienceIndex] ||
-                          experienceInputs[0];
-
-                        if (!experience) return null;
-
-                        return (
-                          <div className="experience-box experience-box-compact">
-                            <div className="experience-box-header">
-                              <label>
-                                {experience.companyName || "Company Name"} -{" "}
-                                {experience.title || "Title"} *
-                              </label>
-                            </div>
-
-                            <p className="profile-experience-timeline">
-                              {[experience.location, experience.timeline]
-                                .filter((value) => value && String(value).trim())
-                                .join(" | ") || "Timeline"}
-                            </p>
-
-                            <textarea
-                              value={experience.details}
-                              onChange={(e) =>
-                                updateExperienceDetails(
-                                  activeExperienceIndex,
-                                  e.target.value
-                                )
-                              }
-                              placeholder={`Paste experience bullets for ${
-                                experience.companyName || "this company"
-                              }.`}
-                            />
-                          </div>
-                        );
-                      })()}
-                    </>
-                  )}
-                </div>
-              )}
-
-              {activeSection === "cert" && (
-                <div className="resume-input-group">
-                  <label htmlFor="certification">Certifications *</label>
-                  <textarea
-                    id="certification"
-                    value={certification}
-                    onChange={(e) => setCertification(e.target.value)}
-                    placeholder="AWS Certified Machine Learning - Specialty"
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="resume-form-footer resume-form-footer--solo">
-              <div className="resume-save-folder-note">
-                <Icon name="folder" size={14} />
-                <p>
-                  {saveFolderReady
-                    ? "Saves to a folder on your laptop or computer."
-                    : FOLDER_PICKER_USER_HINT}
-                </p>
-                <IconButton
-                  icon="folder"
-                  label="Change save folder"
-                  variant="ghost"
-                  size="sm"
-                  disabled={loading}
-                  onClick={handleChangeSaveFolder}
-                />
-              </div>
-              <IconButton
-                icon="fileDown"
-                label={loading ? "Generating resume..." : "Save PDF resume"}
-                variant="primary"
-                size="lg"
-                loading={loading}
-                disabled={loading}
-                onClick={generateResumePdf}
-              />
-            </div>
-          </>
-        ) : (
-          <>
-      <div className="resume-input-group">
-        <label htmlFor="summary">Summary *</label>
-        <textarea
-          id="summary"
-          value={summary}
-          onChange={(e) => setSummary(e.target.value)}
-          placeholder="Required. Paste summary here. Use **bold text** or *italic text* if needed."
-        />
-      </div>
-
-      <div className="resume-input-group">
-        <label htmlFor="skills">Skills *</label>
-        <textarea
-          id="skills"
-          value={skills}
-          onChange={(e) => setSkills(e.target.value)}
-          placeholder={`Required. Example:
-LLMOps & Model Operations: Model versioning, experiment tracking, CI/CD for ML
-AI Governance & Compliance: FISMA, NIST 800-53, model explainability
-Natural Language Processing: Text classification, NER, summarization`}
-        />
-      </div>
-
-      <div className="experience-area">
-        <div className="experience-title-row">
-          <h3>Experience Details *</h3>
-        </div>
-
-        {experienceInputs.length === 0 && (
-          <div className="empty-profile-box">
-            No company experience found in selected profile.
-          </div>
+        {compact && selectedProfile && (
+          <ProfileReferencePanel profile={selectedProfile} />
         )}
 
-        {experienceInputs.map((experience, index) => (
-          <div className="experience-box" key={experience.id}>
-            <div className="experience-box-header">
-              <label>
-                {experience.companyName || "Company Name"} -{" "}
-                {experience.title || "Title"} *
-              </label>
-            </div>
-
-            <p className="profile-experience-timeline">
-              {[experience.location, experience.timeline]
-                .filter((value) => value && String(value).trim())
-                .join(" | ") || "Timeline"}
-            </p>
-
-            <textarea
-              value={experience.details}
-              onChange={(e) => updateExperienceDetails(index, e.target.value)}
-              placeholder={`Required. Paste experience bullets for ${
-                experience.companyName || "this company"
-              }. Lines can start with "-" or no bullet.`}
-            />
-          </div>
-        ))}
-      </div>
-
-      <div className="resume-input-group">
-        <label htmlFor="certification">Certifications *</label>
-        <textarea
-          id="certification"
-          value={certification}
-          onChange={(e) => setCertification(e.target.value)}
-          placeholder="Required. Example: AWS Certified Machine Learning - Specialty"
-        />
-      </div>
-
-      <div className="profile-actions">
-        <div className="resume-save-folder-note">
-          <Icon name="folder" size={14} />
-          <p>
-            {saveFolderReady
-              ? "Saves to a folder on your laptop or computer."
-              : FOLDER_PICKER_USER_HINT}
-          </p>
-          <IconButton
-            icon="folder"
-            label="Change save folder"
-            variant="ghost"
-            size="sm"
-            disabled={loading}
-            onClick={handleChangeSaveFolder}
-          />
-        </div>
-        <IconButton
-          icon="fileDown"
-          label={loading ? "Generating resume..." : "Save PDF resume"}
-          variant="primary"
-          size="lg"
-          loading={loading}
-          disabled={loading}
-          onClick={generateResumePdf}
-        />
-      </div>
-          </>
-        )}
+        {renderWholeResumePaste()}
+        {renderSaveActions()}
       </div>
     </section>
   );
