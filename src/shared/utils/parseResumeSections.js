@@ -255,6 +255,22 @@ export const compareTimelinesExactly = (left = "", right = "") => {
 
 export const parseCompanyTimelineLine = (line = "") => {
   const trimmed = stripMarkdownInline(line);
+  const tripleMatch = trimmed.match(/^(.+?)\s*\|\s*(.+?)\s*\|\s*(.+)$/);
+
+  if (tripleMatch) {
+    const left = tripleMatch[1].trim();
+    const middle = tripleMatch[2].trim();
+    const right = tripleMatch[3].trim();
+
+    if (isTimelineText(right) && !isTimelineText(left) && !isTimelineText(middle)) {
+      return { company: left, title: middle, timeline: right };
+    }
+
+    if (isTimelineText(middle) && !isTimelineText(left) && !isTimelineText(right)) {
+      return { company: left, timeline: middle, title: right };
+    }
+  }
+
   const match = trimmed.match(/^(.+?)\s*\|\s*(.+)$/);
 
   if (!match) {
@@ -277,6 +293,120 @@ export const parseCompanyTimelineLine = (line = "") => {
   }
 
   return null;
+};
+
+export const parseCompanyTitleLine = (line = "") => {
+  const trimmed = stripMarkdownInline(line);
+  const match = trimmed.match(/^(.+?)\s*\|\s*(.+)$/);
+
+  if (!match) {
+    return parseTitleAtCompanyLine(trimmed);
+  }
+
+  const left = match[1].trim();
+  const right = match[2].trim();
+
+  if (!left || !right || isTimelineText(left) || isTimelineText(right)) {
+    return null;
+  }
+
+  const leftIsTitle = looksLikeJobTitleLine(left);
+  const rightIsTitle = looksLikeJobTitleLine(right);
+
+  if (rightIsTitle && !leftIsTitle) {
+    return { company: left, title: right };
+  }
+
+  if (leftIsTitle && !rightIsTitle) {
+    return { company: right, title: left };
+  }
+
+  if (rightIsTitle) {
+    return { company: left, title: right };
+  }
+
+  if (leftIsTitle) {
+    return { company: right, title: left };
+  }
+
+  if (left.split(/\s+/).length <= right.split(/\s+/).length) {
+    return { company: left, title: right };
+  }
+
+  return { company: right, title: left };
+};
+
+const parseTitleAtCompanyLine = (line = "") => {
+  const trimmed = stripMarkdownInline(line);
+  const match = trimmed.match(/^(.+?)\s+at\s+(.+)$/i);
+
+  if (!match) {
+    return null;
+  }
+
+  const left = match[1].trim();
+  const right = match[2].trim();
+
+  if (!left || !right || isTimelineText(left) || isTimelineText(right)) {
+    return null;
+  }
+
+  if (looksLikeJobTitleLine(left)) {
+    return { title: left, company: right };
+  }
+
+  if (looksLikeJobTitleLine(right)) {
+    return { title: right, company: left };
+  }
+
+  return { title: left, company: right };
+};
+
+export const parseSchoolDegreeLine = (line = "") => {
+  const trimmed = stripMarkdownInline(line);
+  const match = trimmed.match(/^(.+?)\s*\|\s*(.+)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const left = match[1].trim();
+  const right = match[2].trim();
+
+  if (!left || !right || isTimelineText(left) || isTimelineText(right)) {
+    return null;
+  }
+
+  const leftIsDegree = DEGREE_HINT.test(left);
+  const rightIsDegree = DEGREE_HINT.test(right);
+  const leftIsSchool = SCHOOL_HINT.test(left);
+  const rightIsSchool = SCHOOL_HINT.test(right);
+
+  if (rightIsDegree && (leftIsSchool || !rightIsSchool)) {
+    return { school: left, degree: right };
+  }
+
+  if (leftIsDegree && (rightIsSchool || !leftIsSchool)) {
+    return { school: right, degree: left };
+  }
+
+  if (rightIsDegree) {
+    return { school: left, degree: right };
+  }
+
+  if (leftIsDegree) {
+    return { school: right, degree: left };
+  }
+
+  if (leftIsSchool) {
+    return { school: left, degree: right };
+  }
+
+  if (rightIsSchool) {
+    return { school: right, degree: left };
+  }
+
+  return { school: left, degree: right };
 };
 
 const parseTitleTimelineLine = (line = "") => {
@@ -345,6 +475,22 @@ const isExperienceBodyLine = (line = "") => {
   return /[.!?]$/.test(trimmed) && trimmed.split(/\s+/).length >= 12;
 };
 
+const isExperienceHeaderLine = (line = "") => {
+  const trimmed = stripMarkdownInline(line).trim();
+
+  if (!trimmed) {
+    return false;
+  }
+
+  return (
+    isTimelineText(trimmed) ||
+    Boolean(parseCompanyTimelineLine(trimmed)) ||
+    Boolean(parseTitleTimelineLine(trimmed)) ||
+    Boolean(parseCompanyTitleLine(trimmed)) ||
+    looksLikeJobTitleLine(trimmed)
+  );
+};
+
 const splitExperienceHeaderAndBody = (blockLines = []) => {
   const headerLines = [];
   const bodyLines = [];
@@ -362,13 +508,7 @@ const splitExperienceHeaderAndBody = (blockLines = []) => {
     }
 
     if (headerLines.length > 0 && !isExperienceBodyLine(trimmed)) {
-      if (
-        headerLines.length < 4 &&
-        (isTimelineText(trimmed) ||
-          parseCompanyTimelineLine(trimmed) ||
-          parseTitleTimelineLine(trimmed) ||
-          looksLikeJobTitleLine(trimmed))
-      ) {
+      if (headerLines.length < 4 && isExperienceHeaderLine(trimmed)) {
         headerLines.push(trimmed);
         return;
       }
@@ -409,7 +549,18 @@ export const parseExperienceHeaderLines = (headerLines = [], profileHint = null)
 
     if (companyTimeline) {
       markUsed(index, "company", companyTimeline.company);
+      if (companyTimeline.title) {
+        markUsed(index, "title", companyTimeline.title);
+      }
       markUsed(index, "timeline", companyTimeline.timeline);
+      return;
+    }
+
+    const companyTitle = parseCompanyTitleLine(line);
+
+    if (companyTitle) {
+      markUsed(index, "company", companyTitle.company);
+      markUsed(index, "title", companyTitle.title);
       return;
     }
 
@@ -509,6 +660,14 @@ export const parseEducationBlockLines = (lines = [], profileHint = null) => {
   };
 
   cleanLines.forEach((line, index) => {
+    const schoolDegree = parseSchoolDegreeLine(line);
+
+    if (schoolDegree) {
+      markUsed(index, "school", schoolDegree.school);
+      markUsed(index, "degree", schoolDegree.degree);
+      return;
+    }
+
     if (isTimelineText(line)) {
       markUsed(index, "timeline", line);
     }
@@ -587,20 +746,79 @@ export const parseEducationEntries = (
     return [];
   }
 
-  const blocks = text.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean);
+  const lines = text.split("\n");
+  const timelineIndexes = [];
 
-  return blocks
-    .map((block, index) => {
-      const lines = block
-        .split("\n")
-        .map((line) => stripMarkdownInline(line).trim())
-        .filter(Boolean);
+  lines.forEach((line, lineIndex) => {
+    const trimmed = stripMarkdownInline(line).trim();
 
-      if (lines.length === 0) {
-        return null;
+    if (trimmed && isTimelineText(trimmed) && !looksLikeJobTitleLine(trimmed)) {
+      timelineIndexes.push(lineIndex);
+    }
+  });
+
+  if (timelineIndexes.length === 0) {
+    return text
+      .split(/\n\s*\n/)
+      .map((block) => block.trim())
+      .filter(Boolean)
+      .map((block, index) => {
+        const blockLines = block
+          .split("\n")
+          .map((line) => stripMarkdownInline(line).trim())
+          .filter(Boolean);
+
+        return parseEducationBlockLines(blockLines, profileEducation[index] || null);
+      })
+      .filter((entry) => entry && (entry.school || entry.degree || entry.timeline));
+  }
+
+  return timelineIndexes
+    .map((timelineIndex, index) => {
+      const headerLines = [];
+      const start = Math.max(0, timelineIndex - 4);
+
+      for (let lineIndex = start; lineIndex <= timelineIndex; lineIndex += 1) {
+        const trimmed = stripMarkdownInline(lines[lineIndex] || "").trim();
+
+        if (!trimmed || isExperienceBodyLine(trimmed)) {
+          continue;
+        }
+
+        headerLines.push(trimmed);
       }
 
-      return parseEducationBlockLines(lines, profileEducation[index] || null);
+      for (
+        let lineIndex = timelineIndex + 1;
+        lineIndex < Math.min(lines.length, timelineIndex + 4);
+        lineIndex += 1
+      ) {
+        const trimmed = stripMarkdownInline(lines[lineIndex] || "").trim();
+
+        if (!trimmed) {
+          continue;
+        }
+
+        if (isTimelineText(trimmed) || isExperienceBodyLine(trimmed)) {
+          break;
+        }
+
+        if (
+          DEGREE_HINT.test(trimmed) ||
+          SCHOOL_HINT.test(trimmed) ||
+          parseSchoolDegreeLine(trimmed)
+        ) {
+          headerLines.push(trimmed);
+          continue;
+        }
+
+        break;
+      }
+
+      return parseEducationBlockLines(
+        [...new Set(headerLines)],
+        profileEducation[index] || null
+      );
     })
     .filter((entry) => entry && (entry.school || entry.degree || entry.timeline));
 };
@@ -621,8 +839,20 @@ const findExperienceBlockMarkers = (lines = []) => {
       markers.push({
         lineIndex,
         company: companyTimeline.company,
-        timeline: companyTimeline.timeline,
-        title: "",
+        timeline: companyTimeline.timeline || "",
+        title: companyTimeline.title || "",
+      });
+      return;
+    }
+
+    const companyTitle = parseCompanyTitleLine(trimmed);
+
+    if (companyTitle) {
+      markers.push({
+        lineIndex,
+        company: companyTitle.company,
+        title: companyTitle.title,
+        timeline: "",
       });
       return;
     }
@@ -677,12 +907,7 @@ const collectHeaderLinesAroundMarker = (lines = [], markerLineIndex = 0) => {
       break;
     }
 
-    if (
-      isTimelineText(trimmed) ||
-      parseCompanyTimelineLine(trimmed) ||
-      parseTitleTimelineLine(trimmed) ||
-      looksLikeJobTitleLine(trimmed)
-    ) {
+    if (isExperienceHeaderLine(trimmed)) {
       headerLines.push(stripMarkdownInline(trimmed));
       continue;
     }
@@ -776,12 +1001,7 @@ export const splitExperienceIntoJobBlocks = (
         break;
       }
 
-      if (
-        isTimelineText(trimmed) ||
-        parseCompanyTimelineLine(trimmed) ||
-        parseTitleTimelineLine(trimmed) ||
-        looksLikeJobTitleLine(trimmed)
-      ) {
+      if (isExperienceHeaderLine(trimmed)) {
         headerLines.push(stripMarkdownInline(trimmed));
         continue;
       }
@@ -814,12 +1034,7 @@ export const splitExperienceIntoJobBlocks = (
         continue;
       }
 
-      if (
-        isTimelineText(trimmed) ||
-        parseCompanyTimelineLine(trimmed) ||
-        parseTitleTimelineLine(trimmed) ||
-        looksLikeJobTitleLine(trimmed)
-      ) {
+      if (isExperienceHeaderLine(trimmed)) {
         bodyStartLine += 1;
         continue;
       }
@@ -853,6 +1068,13 @@ export const isCompanyHeaderLine = (line = "", companyName = "") => {
     return companyRegex.test(parsed.company);
   }
 
+  const companyTitle = parseCompanyTitleLine(trimmed);
+
+  if (companyTitle) {
+    const companyRegex = new RegExp(`\\b${escapeRegExp(cleanCompany)}\\b`, "i");
+    return companyRegex.test(companyTitle.company);
+  }
+
   if (isBulletLine(trimmed) || trimmed.length > 200) {
     return false;
   }
@@ -879,6 +1101,10 @@ const stripCompanyHeaderFromChunk = (chunk = "", companyName = "") => {
 
   if (isCompanyHeaderLine(lines[0], companyName)) {
     startIndex = 1;
+  }
+
+  if (lines[startIndex] && parseCompanyTitleLine(lines[startIndex])) {
+    startIndex += 1;
   }
 
   if (lines[startIndex] && looksLikeJobTitleLine(lines[startIndex])) {
@@ -1128,6 +1354,10 @@ export const parseResumeSections = (
     const inlineSection = sectionType ? null : parseInlineSectionHeader(trimmed);
 
     if (sectionType || inlineSection) {
+      if (sectionType && sectionType === currentType) {
+        return;
+      }
+
       pushCurrentSection();
 
       if (inlineSection) {

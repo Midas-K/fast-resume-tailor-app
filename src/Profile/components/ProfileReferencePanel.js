@@ -1,3 +1,4 @@
+import { memo } from "react";
 import Icon from "../../UI/Icon";
 import { parseJsonField } from "../../shared/utils/format";
 
@@ -90,4 +91,4 @@ function ProfileReferencePanel({ profile }) {
   );
 }
 
-export default ProfileReferencePanel;
+export default memo(ProfileReferencePanel);

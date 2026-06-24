@@ -185,6 +185,7 @@ export const changeCustomerRootFolder = async () => {
 
 export const saveResumeToCustomerFolder = async ({
   pdfBytes,
+  pdfBlob = null,
   profileName = "First_Last",
   companyName = "Unknown Company",
   roleName = "Unknown Role",
@@ -193,6 +194,12 @@ export const saveResumeToCustomerFolder = async ({
 }) => {
   if (!rootDirectoryHandle) {
     throw new Error(FOLDER_PICKER_REQUIRED_MESSAGE);
+  }
+
+  const filePayload = pdfBlob || pdfBytes;
+
+  if (!filePayload) {
+    throw new Error("Resume PDF data is missing.");
   }
 
   const dateFolder = getTodayFolderName();
@@ -222,7 +229,7 @@ export const saveResumeToCustomerFolder = async ({
   });
 
   const writable = await fileHandle.createWritable();
-  await writable.write(pdfBytes);
+  await writable.write(filePayload);
   await writable.close();
 
   return {

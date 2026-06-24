@@ -13,6 +13,7 @@ import ProfileManager from "./Profile/ProfileManager";
 import PromptGenerator from "./Prompt/PromptGenerator";
 import ResumeBuilderForm from "./ResumeForm/ResumeBuilderForm";
 import BuildResumeDashboard from "./BuildResume/BuildResumeDashboard";
+import { warmCustomerRootFolder, canUseFolderPicker } from "./services/fileSystemSaveService";
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -85,6 +86,20 @@ function App() {
       cancelled = true;
     };
   }, [isUser, selectedProfile?.id, showProfiles, jobBidStyle]);
+
+  useEffect(() => {
+    if (!isUser || showProfiles || jobBidStyle === "build_resume") {
+      return undefined;
+    }
+
+    if (!canUseFolderPicker()) {
+      return undefined;
+    }
+
+    warmCustomerRootFolder().catch(() => {});
+
+    return undefined;
+  }, [isUser, showProfiles, jobBidStyle]);
 
   const handleLogin = (loggedInUser) => {
     const normalizedUser = normalizeUser(loggedInUser);

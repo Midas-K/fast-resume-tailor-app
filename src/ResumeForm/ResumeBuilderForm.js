@@ -16,6 +16,16 @@ import {
   saveResumeToCustomerFolder,
 } from "../services/fileSystemSaveService";
 
+const scheduleIdle =
+  typeof requestIdleCallback === "function"
+    ? (callback, options) => requestIdleCallback(callback, options)
+    : (callback) => window.setTimeout(callback, 1);
+
+const cancelIdle =
+  typeof cancelIdleCallback === "function"
+    ? (id) => cancelIdleCallback(id)
+    : (id) => window.clearTimeout(id);
+
 function ResumeBuilderForm({
   appliedRole,
   appliedCompany,
@@ -42,6 +52,15 @@ function ResumeBuilderForm({
     profileMatch: { isValid: false, mismatches: [] },
   });
   const lastParsedKeyRef = useRef("");
+  const parseIdleRef = useRef(null);
+  const buildPayloadRef = useRef(null);
+  const appliedRoleRef = useRef(appliedRole);
+  const appliedCompanyRef = useRef(appliedCompany);
+
+  useEffect(() => {
+    appliedRoleRef.current = appliedRole;
+    appliedCompanyRef.current = appliedCompany;
+  }, [appliedRole, appliedCompany]);
 
   const selectedEducation = useMemo(
     () => parseJsonField(selectedProfile?.education),
@@ -72,8 +91,38 @@ function ResumeBuilderForm({
     };
   }, []);
 
+  const syncBuildPayloadRef = (parsed, profile) => {
+    if (
+      !parsed?.profileMatch?.isValid ||
+      !profile?.id ||
+      !String(appliedRoleRef.current || "").trim() ||
+      !String(appliedCompanyRef.current || "").trim()
+    ) {
+      buildPayloadRef.current = null;
+      return;
+    }
+
+    buildPayloadRef.current = {
+      profileId: profile.id,
+      roleName: String(appliedRoleRef.current).trim(),
+      companyName: String(appliedCompanyRef.current).trim(),
+      summary: parsed.summary.trim(),
+      skills: parsed.skills.trim(),
+      certification: parsed.certification.trim(),
+      experienceInputs: parsed.experienceInputs.map((item) => ({
+        ...item,
+        companyName: item.companyName || "",
+        title: item.title || "",
+        timeline: item.timeline || "",
+        location: item.location || profile.location || "",
+        details: item.details.trim(),
+      })),
+    };
+  };
+
   const applyParsedSnapshot = (rawText, profile) => {
     if (!rawText.trim() || !profile) {
+      buildPayloadRef.current = null;
       parsedSnapshotRef.current = {
         summary: "",
         skills: "",
@@ -106,11 +155,70 @@ function ResumeBuilderForm({
     lastParsedKeyRef.current = `${profile?.id || ""}:${rawText}`;
     setParseMeta(parsed.parseMeta);
     setProfileMatch(parsed.profileMatch);
+    syncBuildPayloadRef(parsed, profile);
   };
 
   useEffect(() => {
-    applyParsedSnapshot(wholeResumePaste, selectedProfile);
-  }, [wholeResumePaste, selectedProfile]);
+    if (!wholeResumePaste.trim() || !selectedProfile) {
+      return undefined;
+    }
+
+    syncBuildPayloadRef(parsedSnapshotRef.current, selectedProfile);
+
+    return undefined;
+  }, [appliedRole, appliedCompany, selectedProfile, wholeResumePaste]);
+
+  const scheduleParse = (rawText, profile) => {
+    if (parseIdleRef.current) {
+      cancelIdle(parseIdleRef.current);
+    }
+
+    parseIdleRef.current = scheduleIdle(
+      () => {
+        parseIdleRef.current = null;
+        applyParsedSnapshot(rawText, profile);
+      },
+      { timeout: 100 }
+    );
+  };
+
+  useEffect(
+    () => () => {
+      if (parseIdleRef.current) {
+        cancelIdle(parseIdleRef.current);
+      }
+    },
+    []
+  );
+
+  const handleResumePasteChange = (event) => {
+    const nextValue = event.target.value;
+    setWholeResumePaste(nextValue);
+    scheduleParse(nextValue, selectedProfile);
+  };
+
+  const handleResumePaste = (event) => {
+    const pastedText = event.clipboardData.getData("text");
+
+    if (!pastedText) {
+      return;
+    }
+
+    const { selectionStart, selectionEnd, value } = event.currentTarget;
+    const nextValue = `${value.slice(0, selectionStart)}${pastedText}${value.slice(
+      selectionEnd
+    )}`;
+
+    event.preventDefault();
+
+    if (parseIdleRef.current) {
+      cancelIdle(parseIdleRef.current);
+      parseIdleRef.current = null;
+    }
+
+    setWholeResumePaste(nextValue);
+    applyParsedSnapshot(nextValue, selectedProfile);
+  };
 
   const getParsedForSave = () => {
     const parseKey = `${selectedProfile?.id || ""}:${wholeResumePaste}`;
@@ -145,7 +253,7 @@ function ResumeBuilderForm({
     { id: "skills", label: "Skills" },
     {
       id: "experience",
-      label: `Experience (${parsedSnapshotRef.current.experienceInputs.length || 0})`,
+      label: `Experience (${selectedExperience.length})`,
     },
     { id: "certifications", label: "Certifications" },
   ];
@@ -216,7 +324,7 @@ function ResumeBuilderForm({
   };
 
   const renderWholeResumePaste = () => (
-    <>
+    <div className="resume-paste-pane">
       {renderParseStatus()}
 
       <div className="resume-input-group resume-input-group--grow">
@@ -225,20 +333,18 @@ function ResumeBuilderForm({
           id="wholeResumePaste"
           className="resume-whole-paste-textarea"
           value={wholeResumePaste}
-          onChange={(event) => setWholeResumePaste(event.target.value)}
+          onChange={handleResumePasteChange}
+          onPaste={handleResumePaste}
           placeholder={`Paste the complete resume content here.
 
-Example headings (any order, many spellings work):
+Example headings (any order):
 PROFESSIONAL SUMMARY
 SKILLS
 WORK EXPERIENCE
-CERTIFICATIONS
-
-Paste plain sentences for skills, details, and certifications — however AI formats them.
-Company blocks like "Confluent | Nov 2024 - Present" are matched to your profile companies.`}
+CERTIFICATIONS`}
         />
       </div>
-    </>
+    </div>
   );
 
   const renderSaveActions = () => (
@@ -353,21 +459,24 @@ Company blocks like "Confluent | Nov 2024 - Present" are matched to your profile
       setLoading(true);
 
       const { dayStart, dayEnd } = getLocalDayBounds();
+      const cachedPayload = buildPayloadRef.current;
       const buildPayload = {
-        profileId: selectedProfile.id,
-        roleName: appliedRole.trim(),
-        companyName: appliedCompany.trim(),
-        summary: parsed.summary.trim(),
-        skills: parsed.skills.trim(),
-        certification: parsed.certification.trim(),
-        experienceInputs: parsed.experienceInputs.map((item) => ({
-          ...item,
-          companyName: item.companyName || "",
-          title: item.title || "",
-          timeline: item.timeline || "",
-          location: item.location || selectedProfile.location || "",
-          details: item.details.trim(),
-        })),
+        ...(cachedPayload || {
+          profileId: selectedProfile.id,
+          roleName: appliedRole.trim(),
+          companyName: appliedCompany.trim(),
+          summary: parsed.summary.trim(),
+          skills: parsed.skills.trim(),
+          certification: parsed.certification.trim(),
+          experienceInputs: parsed.experienceInputs.map((item) => ({
+            ...item,
+            companyName: item.companyName || "",
+            title: item.title || "",
+            timeline: item.timeline || "",
+            location: item.location || selectedProfile.location || "",
+            details: item.details.trim(),
+          })),
+        }),
         dayStart,
         dayEnd,
         recordApplication: true,
@@ -386,10 +495,8 @@ Company blocks like "Confluent | Nov 2024 - Present" are matched to your profile
       const rootDirectoryHandle = folderSelection.handle;
       setSaveFolderReady(true);
 
-      const pdfBytes = new Uint8Array(await blob.arrayBuffer());
-
       const saveResult = await saveResumeToCustomerFolder({
-        pdfBytes,
+        pdfBlob: blob,
         profileName: selectedProfile?.name || "Profile",
         companyName: appliedCompany?.trim() || "Unknown Company",
         roleName: appliedRole?.trim() || "Unknown Role",
@@ -398,6 +505,7 @@ Company blocks like "Confluent | Nov 2024 - Present" are matched to your profile
       });
 
       clearResumeInputs();
+      buildPayloadRef.current = null;
 
       alert(
         `Resume saved to your laptop/computer!\n${saveResult.savedPath || `${saveResult.dateFolder}/${saveResult.companyRoleFolder}/${saveResult.fileName}`}`
@@ -465,91 +573,102 @@ Company blocks like "Confluent | Nov 2024 - Present" are matched to your profile
         </div>
       </div>
 
-      {selectedProfile && compact && (
-        <div className="resume-meta-strip">
-          <strong>{selectedProfile.name}</strong>
-          <span>
-            {parseJsonField(selectedProfile.experience).length} experience ·{" "}
-            {parseJsonField(selectedProfile.education).length} education
-          </span>
-        </div>
-      )}
-
-      {selectedProfile && !compact && (
-        <div className="selected-profile-box">
-          <div className="selected-profile-header">
-            <div>
-              <h3>{selectedProfile.name}</h3>
-              <p>Selected job-bid profile</p>
-            </div>
+      {selectedProfile && compact ? (
+        <>
+          <div className="resume-meta-strip">
+            <strong>{selectedProfile.name}</strong>
+            <span>
+              {selectedExperience.length} experience · {selectedEducation.length}{" "}
+              education
+            </span>
           </div>
 
-          <div className="selected-profile-grid">
-            <div>
-              <span>Location</span>
-              <strong>{selectedProfile.location || "Not provided"}</strong>
-            </div>
+          <div className="resume-form-compact__split">
+            <aside className="resume-form-compact__profile">
+              <ProfileReferencePanel profile={selectedProfile} />
+            </aside>
 
-            <div>
-              <span>Phone</span>
-              <strong>{selectedProfile.phone || "Not provided"}</strong>
-            </div>
-
-            <div>
-              <span>Email</span>
-              <strong>{selectedProfile.email || "Not provided"}</strong>
+            <div className="resume-form-compact__editor">
+              {renderWholeResumePaste()}
+              {renderSaveActions()}
             </div>
           </div>
-
-          <div className="resume-template-notice">
-            <span>Resume Template</span>
-            <strong>
-              {selectedProfile.resume_template_name || "Default template"}
-            </strong>
-            <p>Admin controls this template from the User Profiles section.</p>
-          </div>
-
-          {selectedEducation.length > 0 && (
-            <div className="selected-profile-section compact">
-              <h4>Education</h4>
-
-              {selectedEducation.map((item, index) => (
-                <div className="selected-profile-item" key={index}>
-                  <strong>{item.school || "School"}</strong>
-                  <p>{item.degree || "Degree"}</p>
-                  {item.major && <p>{item.major}</p>}
-                  {item.location && <p>{item.location}</p>}
-                  <p>{item.timeline || "Timeline"}</p>
+        </>
+      ) : (
+        <>
+          {selectedProfile && !compact && (
+            <div className="selected-profile-box">
+              <div className="selected-profile-header">
+                <div>
+                  <h3>{selectedProfile.name}</h3>
+                  <p>Selected job-bid profile</p>
                 </div>
-              ))}
+              </div>
+
+              <div className="selected-profile-grid">
+                <div>
+                  <span>Location</span>
+                  <strong>{selectedProfile.location || "Not provided"}</strong>
+                </div>
+
+                <div>
+                  <span>Phone</span>
+                  <strong>{selectedProfile.phone || "Not provided"}</strong>
+                </div>
+
+                <div>
+                  <span>Email</span>
+                  <strong>{selectedProfile.email || "Not provided"}</strong>
+                </div>
+              </div>
+
+              <div className="resume-template-notice">
+                <span>Resume Template</span>
+                <strong>
+                  {selectedProfile.resume_template_name || "Default template"}
+                </strong>
+                <p>Admin controls this template from the User Profiles section.</p>
+              </div>
+
+              {selectedEducation.length > 0 && (
+                <div className="selected-profile-section compact">
+                  <h4>Education</h4>
+
+                  {selectedEducation.map((item, index) => (
+                    <div className="selected-profile-item" key={index}>
+                      <strong>{item.school || "School"}</strong>
+                      <p>{item.degree || "Degree"}</p>
+                      {item.major && <p>{item.major}</p>}
+                      {item.location && <p>{item.location}</p>}
+                      <p>{item.timeline || "Timeline"}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {selectedExperience.length > 0 && (
+                <div className="selected-profile-section compact">
+                  <h4>Experience</h4>
+
+                  {selectedExperience.map((item, index) => (
+                    <div className="selected-profile-item" key={index}>
+                      <strong>{item.companyName || "Company"}</strong>
+                      <p>{item.title || "Title"}</p>
+                      {item.location && <p>{item.location}</p>}
+                      <p>{item.timeline || "Timeline"}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {selectedExperience.length > 0 && (
-            <div className="selected-profile-section compact">
-              <h4>Experience</h4>
-
-              {selectedExperience.map((item, index) => (
-                <div className="selected-profile-item" key={index}>
-                  <strong>{item.companyName || "Company"}</strong>
-                  <p>{item.title || "Title"}</p>
-                  {item.location && <p>{item.location}</p>}
-                  <p>{item.timeline || "Timeline"}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+          <div className={compact ? "resume-form-body" : undefined}>
+            {renderWholeResumePaste()}
+            {renderSaveActions()}
+          </div>
+        </>
       )}
-
-      <div className={compact ? "resume-form-body" : undefined}>
-        {compact && selectedProfile && (
-          <ProfileReferencePanel profile={selectedProfile} />
-        )}
-
-        {renderWholeResumePaste()}
-        {renderSaveActions()}
-      </div>
     </section>
   );
 }

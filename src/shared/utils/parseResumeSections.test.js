@@ -5,7 +5,9 @@ import {
   normalizeExperienceBodyToLines,
   normalizeSkillsContent,
   parseCompanyTimelineLine,
+  parseCompanyTitleLine,
   parseEducationEntries,
+  parseSchoolDegreeLine,
   parseResumeSections,
   splitExperienceByCompanies,
   splitExperienceIntoJobBlocks,
@@ -317,6 +319,89 @@ PMP
     expect(validation.mismatches).toHaveLength(0);
   });
 
+  test("parses company title line with timeline on next line", () => {
+    const blocks = splitExperienceIntoJobBlocks(
+      `
+Meta | Staff AI/ML Engineer
+Oct 2023 – Present
+
+Built recommendation systems for feed ranking.
+
+Designed large-scale training pipelines on PyTorch.
+`,
+      [
+        {
+          companyName: "Meta",
+          title: "Staff AI/ML Engineer",
+          timeline: "Oct 2023 - Present",
+        },
+      ]
+    );
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].company).toBe("Meta");
+    expect(blocks[0].title).toBe("Staff AI/ML Engineer");
+    expect(blocks[0].timeline).toMatch(/Oct 2023/i);
+    expect(blocks[0].body.split("\n")).toHaveLength(2);
+  });
+
+  test("parses company title timeline on one line", () => {
+    expect(
+      parseCompanyTimelineLine("Meta | Staff AI/ML Engineer | Oct 2023 - Present")
+    ).toEqual({
+      company: "Meta",
+      title: "Staff AI/ML Engineer",
+      timeline: "Oct 2023 - Present",
+    });
+  });
+
+  test("parses title at company format", () => {
+    expect(parseCompanyTitleLine("Staff AI/ML Engineer at Meta")).toEqual({
+      title: "Staff AI/ML Engineer",
+      company: "Meta",
+    });
+  });
+
+  test("parses education entries without blank lines between schools", () => {
+    const entries = parseEducationEntries(
+      `
+University of South Florida
+Bachelor of Science, Computer Science
+Jan 2014 - Dec 2016
+Massachusetts Institute of Technology
+Master of Science, Computer Science
+Sep 2016 - May 2018
+`,
+      [
+        {
+          school: "University of South Florida",
+          degree: "Bachelor of Science, Computer Science",
+          timeline: "Jan 2014 - Dec 2016",
+        },
+        {
+          school: "Massachusetts Institute of Technology",
+          degree: "Master of Science, Computer Science",
+          timeline: "Sep 2016 - May 2018",
+        },
+      ]
+    );
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0].school).toBe("University of South Florida");
+    expect(entries[1].school).toBe("Massachusetts Institute of Technology");
+  });
+
+  test("parses school and degree on one pipe-separated line", () => {
+    expect(
+      parseSchoolDegreeLine(
+        "University of South Florida | Bachelor of Science, Computer Science"
+      )
+    ).toEqual({
+      school: "University of South Florida",
+      degree: "Bachelor of Science, Computer Science",
+    });
+  });
+
   test("parses experience headers in alternate order", () => {
     const blocks = splitExperienceIntoJobBlocks(
       `
@@ -364,6 +449,34 @@ University of South Florida
     expect(entries[0].school).toBe("University of South Florida");
     expect(entries[0].degree).toBe("Bachelor of Science, Computer Science");
     expect(entries[0].timeline).toBe("Jan 2014 - Dec 2016");
+  });
+
+  test("ignores duplicate experience section headings inside pasted experience", () => {
+    const blocks = splitExperienceIntoJobBlocks(
+      `
+PROFESSIONAL EXPERIENCE
+Meta
+Staff AI/ML Engineer
+Oct 2023 - Present
+
+Built feed ranking models.
+
+PROFESSIONAL EXPERIENCE
+Databricks
+Senior Machine Learning Engineer
+Sep 2019 - Oct 2023
+
+Built lakehouse ML pipelines.
+`,
+      [
+        { companyName: "Meta" },
+        { companyName: "Databricks" },
+      ]
+    );
+
+    expect(blocks.length).toBeGreaterThanOrEqual(2);
+    expect(blocks[0].company).toBe("Meta");
+    expect(blocks[1].company).toBe("Databricks");
   });
 
   test("validatePastedResumeAgainstProfile fails when company or duration differs", () => {

@@ -27,8 +27,10 @@ export async function buildResumeFromTemplate(payload) {
   const sequenceHeader = response.headers.get("X-Application-Sequence");
   const blob = await response.blob();
 
-  invalidateCache(applicationCountsPrefix);
-  invalidateCache(`GET:${API_URL}/api/applications/profile/${payload.profileId}`);
+  queueMicrotask(() => {
+    invalidateCache(applicationCountsPrefix);
+    invalidateCache(`GET:${API_URL}/api/applications/profile/${payload.profileId}`);
+  });
 
   return {
     blob,
@@ -63,8 +65,10 @@ export async function buildResumeFromProfile(payload) {
     response.headers.get("X-Resume-Uses-Default-Template") === "true";
   const blob = await response.blob();
 
-  invalidateCache(applicationCountsPrefix);
-  invalidateCache(`GET:${API_URL}/api/applications/profile/${payload.profileId}`);
+  queueMicrotask(() => {
+    invalidateCache(applicationCountsPrefix);
+    invalidateCache(`GET:${API_URL}/api/applications/profile/${payload.profileId}`);
+  });
 
   return {
     blob,

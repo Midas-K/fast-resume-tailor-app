@@ -172,10 +172,8 @@ function BuildResumeDashboard({
 
       setSaveFolderReady(true);
 
-      const pdfBytes = new Uint8Array(await blob.arrayBuffer());
-
       const saveResult = await saveResumeToCustomerFolder({
-        pdfBytes,
+        pdfBlob: blob,
         profileName: profile.name || "Profile",
         companyName: companyName.trim(),
         roleName: roleName.trim(),
