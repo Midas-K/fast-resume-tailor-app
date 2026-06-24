@@ -32,6 +32,12 @@ const corsMiddleware = cors({
     callback(new Error(`CORS blocked origin: ${origin}`));
   },
   credentials: true,
+  exposedHeaders: [
+    "X-Application-Sequence",
+    "X-Resume-Template-Name",
+    "X-Resume-Template-File",
+    "X-Resume-Uses-Default-Template",
+  ],
 });
 
 module.exports = corsMiddleware;

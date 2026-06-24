@@ -99,6 +99,60 @@ const buildNumberedCompanyRoleFolder = ({
   );
 };
 
+const readFolderSequenceFromName = (name = "") => {
+  const match = String(name).trim().match(/^(\d+)\.\s+/);
+
+  if (!match) {
+    return null;
+  }
+
+  const sequence = Number(match[1]);
+
+  return Number.isFinite(sequence) && sequence > 0 ? sequence : null;
+};
+
+export const getNextFolderSequenceInDateFolder = async (
+  dateDirectoryHandle = null
+) => {
+  if (!dateDirectoryHandle) {
+    return 1;
+  }
+
+  let maxSequence = 0;
+
+  try {
+    for await (const [name, handle] of dateDirectoryHandle.entries()) {
+      if (handle.kind !== "directory") {
+        continue;
+      }
+
+      const sequence = readFolderSequenceFromName(name);
+
+      if (sequence) {
+        maxSequence = Math.max(maxSequence, sequence);
+      }
+    }
+  } catch {
+    return 1;
+  }
+
+  return maxSequence + 1;
+};
+
+const resolveApplicationFolderNumber = async ({
+  dateDirectoryHandle = null,
+  applicationNumber = null,
+} = {}) => {
+  const localNext = await getNextFolderSequenceInDateFolder(dateDirectoryHandle);
+  const serverNumber = Number(applicationNumber);
+
+  if (Number.isFinite(serverNumber) && serverNumber >= 1) {
+    return Math.max(serverNumber, localNext);
+  }
+
+  return localNext;
+};
+
 export const FOLDER_PICKER_REQUIRED_MESSAGE =
   "Select a folder on your laptop or computer to save your resume. Use Chrome or Edge (HTTPS or localhost), then choose a local folder such as Documents or Desktop. Files stay on your device only.";
 
@@ -245,14 +299,6 @@ export const saveResumeToCustomerFolder = async ({
 
   const dateFolder = getTodayFolderName();
 
-  const companyRoleFolder = buildNumberedCompanyRoleFolder({
-    applicationNumber,
-    companyName,
-    roleName,
-  });
-
-  const fileName = `${sanitizeFileName(profileName, "First_Last")}.pdf`;
-
   let dateDirectoryHandle = null;
 
   if (
@@ -271,6 +317,19 @@ export const saveResumeToCustomerFolder = async ({
     rememberDateFolderSelection(rootDirectoryHandle, dateFolder, dateDirectoryHandle);
   }
 
+  const resolvedApplicationNumber = await resolveApplicationFolderNumber({
+    dateDirectoryHandle,
+    applicationNumber,
+  });
+
+  const companyRoleFolder = buildNumberedCompanyRoleFolder({
+    applicationNumber: resolvedApplicationNumber,
+    companyName,
+    roleName,
+  });
+
+  const fileName = `${sanitizeFileName(profileName, "First_Last")}.pdf`;
+
   const companyRoleDirectoryHandle =
     await dateDirectoryHandle.getDirectoryHandle(companyRoleFolder, {
       create: true,
@@ -288,7 +347,7 @@ export const saveResumeToCustomerFolder = async ({
     dateFolder,
     companyRoleFolder,
     fileName,
-    applicationNumber,
+    applicationNumber: resolvedApplicationNumber,
     savedPath: `${dateFolder}/${companyRoleFolder}/${fileName}`,
   };
 };

@@ -29,7 +29,7 @@ const sendPdfResult = (res, result) => {
     );
   }
 
-  if (result.sequenceNumber) {
+  if (result.sequenceNumber != null) {
     res.setHeader("X-Application-Sequence", String(result.sequenceNumber));
   }
 
