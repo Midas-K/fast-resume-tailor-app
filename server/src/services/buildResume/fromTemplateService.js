@@ -1,7 +1,6 @@
 const fs = require("fs/promises");
 const path = require("path");
 const os = require("os");
-const { execFile } = require("child_process");
 const PizZip = require("pizzip");
 const Docxtemplater = require("docxtemplater");
 const pool = require("../../db");
@@ -19,6 +18,7 @@ const {
   applyBoldToRPr,
 } = require("./templateStyles");
 const { repairSplitPlaceholdersInZip } = require("./docxPlaceholderRepair");
+const { runLibreOfficeConvert } = require("./libreOfficeConvert");
 
 const DOCX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -27,6 +27,24 @@ const BULLET_NUM_ID = "99";
 const BULLET_ABSTRACT_NUM_ID = "99";
 
 const templatePrepCache = new Map();
+const templateRowCache = new Map();
+
+const cacheTemplateRow = (template) => {
+  if (!template?.id) {
+    return template;
+  }
+
+  templateRowCache.set(String(template.id), template);
+  return template;
+};
+
+const getCachedTemplateRow = (templateId) => {
+  if (!templateId) {
+    return null;
+  }
+
+  return templateRowCache.get(String(templateId)) || null;
+};
 
 const getTemplatePrep = (templateId, fileData) => {
   const cacheKey = String(templateId);
@@ -439,42 +457,6 @@ const buildContact = ({ email, location, phone, links }) => {
     .join(" • ");
 };
 
-const runLibreOfficeConvert = (inputPath, outputDir) => {
-  return new Promise((resolve, reject) => {
-    execFile(
-      "libreoffice",
-      [
-        "--headless",
-        "--norestore",
-        "--nologo",
-        "--nodefault",
-        "--nofirststartwizard",
-        "--convert-to",
-        "pdf",
-        "--outdir",
-        outputDir,
-        inputPath,
-      ],
-      {
-        timeout: 120000,
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error("LibreOffice stdout:", stdout);
-          console.error("LibreOffice stderr:", stderr);
-          reject(error);
-          return;
-        }
-
-        resolve({
-          stdout,
-          stderr,
-        });
-      }
-    );
-  });
-};
-
 const getAssignedOrDefaultTemplate = async (profileId) => {
   const assignedTemplate = await pool.query(
     `
@@ -495,7 +477,15 @@ const getAssignedOrDefaultTemplate = async (profileId) => {
   );
 
   if (assignedTemplate.rows.length > 0) {
-    return assignedTemplate.rows[0];
+    return cacheTemplateRow(assignedTemplate.rows[0]);
+  }
+
+  const cachedDefault = [...templateRowCache.values()].find(
+    (template) => template?.is_default
+  );
+
+  if (cachedDefault) {
+    return cachedDefault;
   }
 
   const defaultTemplate = await pool.query(
@@ -505,7 +495,8 @@ const getAssignedOrDefaultTemplate = async (profileId) => {
         name,
         file_name,
         mime_type,
-        file_data
+        file_data,
+        is_default
       FROM resume_templates
       WHERE is_active = true
       ORDER BY is_default DESC, created_at DESC
@@ -514,7 +505,7 @@ const getAssignedOrDefaultTemplate = async (profileId) => {
   );
 
   if (defaultTemplate.rows.length > 0) {
-    return defaultTemplate.rows[0];
+    return cacheTemplateRow(defaultTemplate.rows[0]);
   }
 
   return null;
@@ -873,6 +864,8 @@ async function buildResumeFromTemplate({ user, body }) {
       [profileId, user.id]
     );
 
+    const templateQuery = getAssignedOrDefaultTemplate(profileId);
+
     const sequenceQuery =
       recordApplication && dayStart && dayEnd
         ? getDailySequenceNumber({
@@ -883,27 +876,26 @@ async function buildResumeFromTemplate({ user, body }) {
           })
         : Promise.resolve(null);
 
+    const duplicateCheckQuery = recordApplication
+      ? assertApplicationIsNew({
+          profileId,
+          userId: user.id,
+          companyName,
+          roleName,
+        })
+      : Promise.resolve();
+
     let profileResult;
     let sequenceNumber;
+    let template;
 
     try {
-      if (recordApplication) {
-        [, profileResult, sequenceNumber] = await Promise.all([
-          assertApplicationIsNew({
-            profileId,
-            userId: user.id,
-            companyName,
-            roleName,
-          }),
-          profileQuery,
-          sequenceQuery,
-        ]);
-      } else {
-        [profileResult, sequenceNumber] = await Promise.all([
-          profileQuery,
-          sequenceQuery,
-        ]);
-      }
+      [, profileResult, sequenceNumber, template] = await Promise.all([
+        duplicateCheckQuery,
+        profileQuery,
+        sequenceQuery,
+        templateQuery,
+      ]);
     } catch (error) {
       mapServiceError(error);
     }
@@ -914,7 +906,13 @@ async function buildResumeFromTemplate({ user, body }) {
 
     const profile = profileResult.rows[0];
 
-    const template = await getAssignedOrDefaultTemplate(profile.id);
+    if (!template) {
+      const cachedTemplate = getCachedTemplateRow(profile.resume_template_id);
+
+      if (cachedTemplate) {
+        template = cachedTemplate;
+      }
+    }
 
     if (!template) {
       throw createServiceError(
@@ -1013,16 +1011,14 @@ async function buildResumeFromTemplate({ user, body }) {
     const pdfBuffer = await fs.readFile(pdfPath);
 
     if (recordApplication) {
-      try {
-        await recordApplicationAfterResume({
-          userId: user.id,
-          profileId,
-          companyName,
-          roleName,
-        });
-      } catch (error) {
-        mapServiceError(error);
-      }
+      recordApplicationAfterResume({
+        userId: user.id,
+        profileId,
+        companyName,
+        roleName,
+      }).catch((error) => {
+        console.error("Deferred application record error:", error.message);
+      });
     }
 
     return {
@@ -1036,14 +1032,12 @@ async function buildResumeFromTemplate({ user, body }) {
     };
   } finally {
     if (tempDir) {
-      try {
-        await fs.rm(tempDir, {
-          recursive: true,
-          force: true,
-        });
-      } catch (cleanupError) {
+      fs.rm(tempDir, {
+        recursive: true,
+        force: true,
+      }).catch((cleanupError) => {
         console.error("Temp cleanup error:", cleanupError.message);
-      }
+      });
     }
   }
 }

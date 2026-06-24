@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Icon from "../UI/Icon";
 import IconButton from "../UI/IconButton";
 import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
-import { buildResumeFromTemplate } from "../shared/api/buildResumeApi";
+import { buildResumeFromTemplate, warmBuildResumeApi } from "../shared/api/buildResumeApi";
 import { parseJsonField } from "../shared/utils/format";
 import { parseAndValidateResumePaste } from "../shared/utils/parseResumeSections";
 import {
@@ -12,6 +12,7 @@ import {
   FOLDER_PICKER_REQUIRED_MESSAGE,
   getLocalDayBounds,
   getCachedCustomerRootFolder,
+  prepareResumeSaveFolder,
   warmCustomerRootFolder,
   saveResumeToCustomerFolder,
 } from "../services/fileSystemSaveService";
@@ -44,6 +45,7 @@ function ResumeBuilderForm({
   });
   const [loading, setLoading] = useState(false);
   const [saveFolderReady, setSaveFolderReady] = useState(canUseFolderPicker());
+  const [, startParseTransition] = useTransition();
   const parsedSnapshotRef = useRef({
     summary: "",
     skills: "",
@@ -78,10 +80,12 @@ function ResumeBuilderForm({
 
     let cancelled = false;
 
+    warmBuildResumeApi();
     warmCustomerRootFolder()
-      .then(() => {
+      .then((selection) => {
         if (!cancelled) {
           setSaveFolderReady(true);
+          prepareResumeSaveFolder(selection?.handle).catch(() => {});
         }
       })
       .catch(() => {});
@@ -117,6 +121,22 @@ function ResumeBuilderForm({
         location: item.location || profile.location || "",
         details: item.details.trim(),
       })),
+      bodyJson: JSON.stringify({
+        profileId: profile.id,
+        roleName: String(appliedRoleRef.current).trim(),
+        companyName: String(appliedCompanyRef.current).trim(),
+        summary: parsed.summary.trim(),
+        skills: parsed.skills.trim(),
+        certification: parsed.certification.trim(),
+        experienceInputs: parsed.experienceInputs.map((item) => ({
+          companyName: item.companyName || "",
+          title: item.title || "",
+          timeline: item.timeline || "",
+          location: item.location || profile.location || "",
+          details: item.details.trim(),
+        })),
+        recordApplication: true,
+      }),
     };
   };
 
@@ -153,8 +173,10 @@ function ResumeBuilderForm({
 
     parsedSnapshotRef.current = parsed;
     lastParsedKeyRef.current = `${profile?.id || ""}:${rawText}`;
-    setParseMeta(parsed.parseMeta);
-    setProfileMatch(parsed.profileMatch);
+    startParseTransition(() => {
+      setParseMeta(parsed.parseMeta);
+      setProfileMatch(parsed.profileMatch);
+    });
     syncBuildPayloadRef(parsed, profile);
   };
 
@@ -178,7 +200,7 @@ function ResumeBuilderForm({
         parseIdleRef.current = null;
         applyParsedSnapshot(rawText, profile);
       },
-      { timeout: 100 }
+      { timeout: 50 }
     );
   };
 
@@ -237,8 +259,85 @@ function ResumeBuilderForm({
 
     parsedSnapshotRef.current = parsed;
     lastParsedKeyRef.current = parseKey;
-    setParseMeta(parsed.parseMeta);
-    setProfileMatch(parsed.profileMatch);
+    startParseTransition(() => {
+      setParseMeta(parsed.parseMeta);
+      setProfileMatch(parsed.profileMatch);
+    });
+    syncBuildPayloadRef(parsed, selectedProfile);
+
+    return parsed;
+  };
+
+  const validateRequiredFields = () => {
+    if (!selectedProfile) {
+      alert("Please select a job-bid profile first.");
+      return null;
+    }
+
+    if (
+      !String(appliedRole || "").trim() ||
+      !String(appliedCompany || "").trim()
+    ) {
+      alert("Please enter role name and company name first.");
+      return null;
+    }
+
+    if (!wholeResumePaste.trim()) {
+      alert(
+        "Paste the full resume content with section headings (Summary, Skills, Experience, Certifications)."
+      );
+      return null;
+    }
+
+    const cachedPayload = buildPayloadRef.current;
+    const canUseFastPath =
+      cachedPayload?.bodyJson &&
+      profileMatch.isValid &&
+      lastParsedKeyRef.current === `${selectedProfile.id}:${wholeResumePaste}`;
+
+    const parsed = canUseFastPath
+      ? parsedSnapshotRef.current
+      : getParsedForSave();
+
+    if (!parsed.summary.trim()) {
+      alert("Summary is required.");
+      return null;
+    }
+
+    if (!parsed.skills.trim()) {
+      alert("Skills are required.");
+      return null;
+    }
+
+    if (parsed.experienceInputs.length === 0) {
+      alert("At least one profile experience is required.");
+      return null;
+    }
+
+    const missingExperience = parsed.experienceInputs.some(
+      (item) => !item.details.trim()
+    );
+
+    if (missingExperience) {
+      alert(
+        "Experience details are required for every company in the selected profile."
+      );
+      return null;
+    }
+
+    if (!parsed.certification.trim()) {
+      alert("Certifications are required.");
+      return null;
+    }
+
+    if (!parsed.profileMatch.isValid) {
+      alert(
+        `Profile safety check failed. Experience and education must match your profile exactly before saving.\n\n${parsed.profileMatch.mismatches
+          .map((item) => `- ${item}`)
+          .join("\n")}`
+      );
+      return null;
+    }
 
     return parsed;
   };
@@ -377,72 +476,6 @@ CERTIFICATIONS`}
     </div>
   );
 
-  const validateRequiredFields = () => {
-    if (!selectedProfile) {
-      alert("Please select a job-bid profile first.");
-      return null;
-    }
-
-    if (
-      !String(appliedRole || "").trim() ||
-      !String(appliedCompany || "").trim()
-    ) {
-      alert("Please enter role name and company name first.");
-      return null;
-    }
-
-    if (!wholeResumePaste.trim()) {
-      alert(
-        "Paste the full resume content with section headings (Summary, Skills, Experience, Certifications)."
-      );
-      return null;
-    }
-
-    const parsed = getParsedForSave();
-
-    if (!parsed.summary.trim()) {
-      alert("Summary is required.");
-      return null;
-    }
-
-    if (!parsed.skills.trim()) {
-      alert("Skills are required.");
-      return null;
-    }
-
-    if (parsed.experienceInputs.length === 0) {
-      alert("At least one profile experience is required.");
-      return null;
-    }
-
-    const missingExperience = parsed.experienceInputs.some(
-      (item) => !item.details.trim()
-    );
-
-    if (missingExperience) {
-      alert(
-        "Experience details are required for every company in the selected profile."
-      );
-      return null;
-    }
-
-    if (!parsed.certification.trim()) {
-      alert("Certifications are required.");
-      return null;
-    }
-
-    if (!parsed.profileMatch.isValid) {
-      alert(
-        `Profile safety check failed. Experience and education must match your profile exactly before saving.\n\n${parsed.profileMatch.mismatches
-          .map((item) => `- ${item}`)
-          .join("\n")}`
-      );
-      return null;
-    }
-
-    return parsed;
-  };
-
   const generateResumePdf = async () => {
     const parsed = validateRequiredFields();
 
@@ -481,21 +514,30 @@ CERTIFICATIONS`}
         dayEnd,
         recordApplication: true,
       };
+      const requestBodyJson = cachedPayload?.bodyJson
+        ? JSON.stringify({
+            ...JSON.parse(cachedPayload.bodyJson),
+            dayStart,
+            dayEnd,
+          })
+        : undefined;
 
       const cachedFolder = getCachedCustomerRootFolder();
       const folderPromise = cachedFolder
-        ? Promise.resolve(cachedFolder)
+        ? prepareResumeSaveFolder(cachedFolder.handle).then(() => cachedFolder)
         : warmCustomerRootFolder();
 
       const [folderSelection, { blob, sequenceNumber }] = await Promise.all([
         folderPromise,
-        buildResumeFromTemplate(buildPayload),
+        buildResumeFromTemplate(buildPayload, {
+          bodyJson: requestBodyJson || undefined,
+        }),
       ]);
 
       const rootDirectoryHandle = folderSelection.handle;
       setSaveFolderReady(true);
 
-      const saveResult = await saveResumeToCustomerFolder({
+      const saveResultPromise = saveResumeToCustomerFolder({
         pdfBlob: blob,
         profileName: selectedProfile?.name || "Profile",
         companyName: appliedCompany?.trim() || "Unknown Company",
@@ -506,6 +548,8 @@ CERTIFICATIONS`}
 
       clearResumeInputs();
       buildPayloadRef.current = null;
+
+      const saveResult = await saveResultPromise;
 
       alert(
         `Resume saved to your laptop/computer!\n${saveResult.savedPath || `${saveResult.dateFolder}/${saveResult.companyRoleFolder}/${saveResult.fileName}`}`

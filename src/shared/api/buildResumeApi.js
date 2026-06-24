@@ -3,7 +3,23 @@ import { invalidateCache } from "./cache";
 
 const applicationCountsPrefix = `GET:${API_URL}/api/applications/profile-counts`;
 
-export async function buildResumeFromTemplate(payload) {
+export function warmBuildResumeApi() {
+  const token = getToken();
+
+  if (!token || !API_URL) {
+    return;
+  }
+
+  fetch(`${API_URL}/api/health`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    cache: "no-store",
+  }).catch(() => {});
+}
+
+export async function buildResumeFromTemplate(payload, options = {}) {
   const token = getToken();
 
   if (!token) {
@@ -16,7 +32,8 @@ export async function buildResumeFromTemplate(payload) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload),
+    body: options.bodyJson || JSON.stringify(payload),
+    keepalive: true,
   });
 
   if (!response.ok) {
@@ -38,7 +55,7 @@ export async function buildResumeFromTemplate(payload) {
   };
 }
 
-export async function buildResumeFromProfile(payload) {
+export async function buildResumeFromProfile(payload, options = {}) {
   const token = getToken();
 
   if (!token) {
@@ -51,7 +68,8 @@ export async function buildResumeFromProfile(payload) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload),
+    body: options.bodyJson || JSON.stringify(payload),
+    keepalive: true,
   });
 
   if (!response.ok) {

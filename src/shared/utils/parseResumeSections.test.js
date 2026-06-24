@@ -6,8 +6,10 @@ import {
   normalizeSkillsContent,
   parseCompanyTimelineLine,
   parseCompanyTitleLine,
+  parseDegreeTimelineLine,
   parseEducationEntries,
   parseSchoolDegreeLine,
+  parseSchoolDegreeTimelineLine,
   parseResumeSections,
   splitExperienceByCompanies,
   splitExperienceIntoJobBlocks,
@@ -360,6 +362,143 @@ Designed large-scale training pipelines on PyTorch.
       title: "Staff AI/ML Engineer",
       company: "Meta",
     });
+  });
+
+  test("parses school on one line and degree timeline on the next", () => {
+    const entries = parseEducationEntries(
+      `
+Stanford University
+Bachelor of Science in Computer Science | Jan 2010 – Dec 2014
+`,
+      [
+        {
+          school: "Stanford University",
+          degree: "Bachelor of Science in Computer Science",
+          timeline: "Jan 2010 - Dec 2014",
+        },
+      ]
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].school).toBe("Stanford University");
+    expect(entries[0].degree).toBe("Bachelor of Science in Computer Science");
+    expect(entries[0].timeline).toMatch(/Jan 2010/i);
+  });
+
+  test("parses degree timeline line helper", () => {
+    expect(
+      parseDegreeTimelineLine(
+        "Bachelor of Science in Computer Science | Jan 2010 – Dec 2014"
+      )
+    ).toEqual({
+      degree: "Bachelor of Science in Computer Science",
+      timeline: "Jan 2010 – Dec 2014",
+    });
+  });
+
+  test("parses school degree timeline on one line", () => {
+    expect(
+      parseSchoolDegreeTimelineLine(
+        "Stanford University | Bachelor of Science in Computer Science | Jan 2010 - Dec 2014"
+      )
+    ).toEqual({
+      school: "Stanford University",
+      degree: "Bachelor of Science in Computer Science",
+      timeline: "Jan 2010 - Dec 2014",
+    });
+  });
+
+  test("parses multiple schools with degree timeline lines and no blank lines", () => {
+    const entries = parseEducationEntries(
+      `
+Stanford University
+Bachelor of Science in Computer Science | Jan 2010 – Dec 2014
+Massachusetts Institute of Technology
+Master of Science, Computer Science | Sep 2016 - May 2018
+`,
+      [
+        {
+          school: "Stanford University",
+          degree: "Bachelor of Science in Computer Science",
+          timeline: "Jan 2010 - Dec 2014",
+        },
+        {
+          school: "Massachusetts Institute of Technology",
+          degree: "Master of Science, Computer Science",
+          timeline: "Sep 2016 - May 2018",
+        },
+      ]
+    );
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0].school).toBe("Stanford University");
+    expect(entries[1].school).toBe("Massachusetts Institute of Technology");
+  });
+
+  test("parses school degree line with timeline on the next line", () => {
+    const entries = parseEducationEntries(
+      `
+Stanford University | Bachelor of Science in Computer Science
+Jan 2010 – Dec 2014
+`,
+      [
+        {
+          school: "Stanford University",
+          degree: "Bachelor of Science in Computer Science",
+          timeline: "Jan 2010 - Dec 2014",
+        },
+      ]
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].school).toBe("Stanford University");
+    expect(entries[0].degree).toBe("Bachelor of Science in Computer Science");
+    expect(entries[0].timeline).toMatch(/Jan 2010/i);
+  });
+
+  test("validates school plus degree timeline format against profile", () => {
+    const profile = {
+      experience: [
+        {
+          companyName: "Meta",
+          title: "Staff Engineer",
+          timeline: "Oct 2023 - Present",
+        },
+      ],
+      education: [
+        {
+          school: "Stanford University",
+          degree: "Bachelor of Science in Computer Science",
+          timeline: "Jan 2010 - Dec 2014",
+        },
+      ],
+    };
+
+    const validation = validatePastedResumeAgainstProfile({
+      rawText: `
+PROFESSIONAL SUMMARY
+ML engineer.
+
+SKILLS
+Python
+
+EDUCATION
+Stanford University
+Bachelor of Science in Computer Science | Jan 2010 – Dec 2014
+
+WORK EXPERIENCE
+Meta | Staff Engineer | Oct 2023 - Present
+
+Built models.
+
+CERTIFICATIONS
+AWS Certified Machine Learning - Specialty
+`,
+      profile,
+    });
+
+    expect(validation.isValid).toBe(true);
+    expect(validation.mismatches).toHaveLength(0);
   });
 
   test("parses education entries without blank lines between schools", () => {

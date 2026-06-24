@@ -110,16 +110,56 @@ export const canUseFolderPicker = () => {
 };
 
 let cachedRootFolderSelection = null;
+let cachedDateFolderSelection = null;
 
 export const getCachedCustomerRootFolder = () => cachedRootFolderSelection;
 
+export const getCachedDateFolderHandle = () => cachedDateFolderSelection;
+
+const rememberDateFolderSelection = (rootDirectoryHandle, dateFolder, handle) => {
+  cachedDateFolderSelection = {
+    rootDirectoryHandle,
+    dateFolder,
+    handle,
+  };
+};
+
+export const prepareResumeSaveFolder = async (rootDirectoryHandle = null) => {
+  const rootHandle =
+    rootDirectoryHandle || cachedRootFolderSelection?.handle || null;
+
+  if (!rootHandle) {
+    return null;
+  }
+
+  const dateFolder = getTodayFolderName();
+
+  if (
+    cachedDateFolderSelection?.rootDirectoryHandle === rootHandle &&
+    cachedDateFolderSelection?.dateFolder === dateFolder &&
+    cachedDateFolderSelection?.handle
+  ) {
+    return cachedDateFolderSelection;
+  }
+
+  const handle = await rootHandle.getDirectoryHandle(dateFolder, {
+    create: true,
+  });
+
+  rememberDateFolderSelection(rootHandle, dateFolder, handle);
+
+  return cachedDateFolderSelection;
+};
+
 export const warmCustomerRootFolder = async () => {
   if (cachedRootFolderSelection) {
+    prepareResumeSaveFolder(cachedRootFolderSelection.handle).catch(() => {});
     return cachedRootFolderSelection;
   }
 
   const selection = await resolveCustomerRootFolder();
   cachedRootFolderSelection = selection;
+  prepareResumeSaveFolder(selection.handle).catch(() => {});
   return selection;
 };
 
@@ -179,6 +219,7 @@ export const resolveCustomerRootFolder = async ({ forcePicker = false } = {}) =>
 
 export const changeCustomerRootFolder = async () => {
   cachedRootFolderSelection = null;
+  cachedDateFolderSelection = null;
   await clearStoredCustomerRootHandle();
   return resolveCustomerRootFolder({ forcePicker: true });
 };
@@ -212,12 +253,23 @@ export const saveResumeToCustomerFolder = async ({
 
   const fileName = `${sanitizeFileName(profileName, "First_Last")}.pdf`;
 
-  const dateDirectoryHandle = await rootDirectoryHandle.getDirectoryHandle(
-    dateFolder,
-    {
-      create: true,
-    }
-  );
+  let dateDirectoryHandle = null;
+
+  if (
+    cachedDateFolderSelection?.rootDirectoryHandle === rootDirectoryHandle &&
+    cachedDateFolderSelection?.dateFolder === dateFolder &&
+    cachedDateFolderSelection?.handle
+  ) {
+    dateDirectoryHandle = cachedDateFolderSelection.handle;
+  } else {
+    dateDirectoryHandle = await rootDirectoryHandle.getDirectoryHandle(
+      dateFolder,
+      {
+        create: true,
+      }
+    );
+    rememberDateFolderSelection(rootDirectoryHandle, dateFolder, dateDirectoryHandle);
+  }
 
   const companyRoleDirectoryHandle =
     await dateDirectoryHandle.getDirectoryHandle(companyRoleFolder, {

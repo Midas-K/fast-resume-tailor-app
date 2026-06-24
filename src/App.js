@@ -14,6 +14,7 @@ import PromptGenerator from "./Prompt/PromptGenerator";
 import ResumeBuilderForm from "./ResumeForm/ResumeBuilderForm";
 import BuildResumeDashboard from "./BuildResume/BuildResumeDashboard";
 import { warmCustomerRootFolder, canUseFolderPicker } from "./services/fileSystemSaveService";
+import { warmBuildResumeApi } from "./shared/api/buildResumeApi";
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -88,7 +89,7 @@ function App() {
   }, [isUser, selectedProfile?.id, showProfiles, jobBidStyle]);
 
   useEffect(() => {
-    if (!isUser || showProfiles || jobBidStyle === "build_resume") {
+    if (!isUser || showProfiles) {
       return undefined;
     }
 
@@ -96,6 +97,7 @@ function App() {
       return undefined;
     }
 
+    warmBuildResumeApi();
     warmCustomerRootFolder().catch(() => {});
 
     return undefined;

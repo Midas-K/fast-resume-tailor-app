@@ -5,7 +5,7 @@ import Icon from "../UI/Icon";
 import IconButton from "../UI/IconButton";
 import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
 import { fetchProfileById } from "../Profile/api/profileApi";
-import { buildResumeFromProfile } from "../shared/api/buildResumeApi";
+import { buildResumeFromProfile, warmBuildResumeApi } from "../shared/api/buildResumeApi";
 import {
   canUseFolderPicker,
   changeCustomerRootFolder,
@@ -13,6 +13,7 @@ import {
   FOLDER_PICKER_USER_HINT,
   getLocalDayBounds,
   getCachedCustomerRootFolder,
+  prepareResumeSaveFolder,
   warmCustomerRootFolder,
   saveResumeToCustomerFolder,
 } from "../services/fileSystemSaveService";
@@ -45,10 +46,12 @@ function BuildResumeDashboard({
 
     let cancelled = false;
 
+    warmBuildResumeApi();
     warmCustomerRootFolder()
-      .then(() => {
+      .then((selection) => {
         if (!cancelled) {
           setSaveFolderReady(true);
+          prepareResumeSaveFolder(selection?.handle).catch(() => {});
         }
       })
       .catch(() => {});
@@ -155,7 +158,7 @@ function BuildResumeDashboard({
 
       const cachedFolder = getCachedCustomerRootFolder();
       const folderPromise = cachedFolder
-        ? Promise.resolve(cachedFolder)
+        ? prepareResumeSaveFolder(cachedFolder.handle).then(() => cachedFolder)
         : warmCustomerRootFolder();
 
       const [folderSelection, buildResult] = await Promise.all([

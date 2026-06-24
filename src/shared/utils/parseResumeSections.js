@@ -409,6 +409,110 @@ export const parseSchoolDegreeLine = (line = "") => {
   return { school: left, degree: right };
 };
 
+export const parseDegreeTimelineLine = (line = "") => {
+  const trimmed = stripMarkdownInline(line);
+  const match = trimmed.match(/^(.+?)\s*\|\s*(.+)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const left = match[1].trim();
+  const right = match[2].trim();
+
+  if (!left || !right || isTimelineText(left) || !isTimelineText(right)) {
+    return null;
+  }
+
+  return {
+    degree: left,
+    timeline: right,
+  };
+};
+
+export const parseSchoolDegreeTimelineLine = (line = "") => {
+  const trimmed = stripMarkdownInline(line);
+  const match = trimmed.match(/^(.+?)\s*\|\s*(.+?)\s*\|\s*(.+)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const left = match[1].trim();
+  const middle = match[2].trim();
+  const right = match[3].trim();
+
+  if (!left || !middle || !right || !isTimelineText(right)) {
+    return null;
+  }
+
+  if (isTimelineText(left) || isTimelineText(middle)) {
+    return null;
+  }
+
+  const leftIsSchool = SCHOOL_HINT.test(left);
+  const middleIsSchool = SCHOOL_HINT.test(middle);
+  const leftIsDegree = DEGREE_HINT.test(left);
+  const middleIsDegree = DEGREE_HINT.test(middle);
+
+  if (leftIsSchool && middleIsDegree) {
+    return { school: left, degree: middle, timeline: right };
+  }
+
+  if (leftIsDegree && middleIsSchool) {
+    return { school: middle, degree: left, timeline: right };
+  }
+
+  if (leftIsSchool) {
+    return { school: left, degree: middle, timeline: right };
+  }
+
+  if (middleIsSchool) {
+    return { school: middle, degree: left, timeline: right };
+  }
+
+  if (leftIsDegree) {
+    return { school: middle, degree: left, timeline: right };
+  }
+
+  if (middleIsDegree) {
+    return { school: left, degree: middle, timeline: right };
+  }
+
+  return { school: left, degree: middle, timeline: right };
+};
+
+const isStandaloneEducationTimelineLine = (line = "") => {
+  const trimmed = stripMarkdownInline(line).trim();
+
+  if (!trimmed || !isTimelineText(trimmed)) {
+    return false;
+  }
+
+  if (parseDegreeTimelineLine(trimmed) || parseSchoolDegreeTimelineLine(trimmed)) {
+    return false;
+  }
+
+  return !DEGREE_HINT.test(trimmed);
+};
+
+const isEducationHeaderLine = (line = "") => {
+  const trimmed = stripMarkdownInline(line).trim();
+
+  if (!trimmed) {
+    return false;
+  }
+
+  return (
+    Boolean(parseSchoolDegreeTimelineLine(trimmed)) ||
+    Boolean(parseSchoolDegreeLine(trimmed)) ||
+    Boolean(parseDegreeTimelineLine(trimmed)) ||
+    isStandaloneEducationTimelineLine(trimmed) ||
+    (SCHOOL_HINT.test(trimmed) && !looksLikeJobTitleLine(trimmed)) ||
+    (DEGREE_HINT.test(trimmed) && !isExperienceBodyLine(trimmed))
+  );
+};
+
 const parseTitleTimelineLine = (line = "") => {
   const trimmed = stripMarkdownInline(line);
   const match = trimmed.match(/^(.+?)\s*\|\s*(.+)$/);
@@ -530,61 +634,77 @@ export const parseExperienceHeaderLines = (headerLines = [], profileHint = null)
     title: "",
     timeline: "",
   };
-  const usedIndexes = new Set();
+  const consumedLines = new Set();
 
-  const markUsed = (index, key, value) => {
-    if (!value || usedIndexes.has(index)) {
+  const assignField = (key, value) => {
+    if (!value || fields[key]) {
       return;
     }
 
-    if (!fields[key]) {
-      fields[key] = value;
+    fields[key] = value;
+  };
+
+  const consumeStructuredLine = (index, values = {}) => {
+    Object.entries(values).forEach(([key, value]) => {
+      assignField(key, value);
+    });
+    consumedLines.add(index);
+  };
+
+  const markHeuristicLine = (index, key, value) => {
+    if (!value || consumedLines.has(index)) {
+      return;
     }
 
-    usedIndexes.add(index);
+    assignField(key, value);
+    consumedLines.add(index);
   };
 
   lines.forEach((line, index) => {
     const companyTimeline = parseCompanyTimelineLine(line);
 
     if (companyTimeline) {
-      markUsed(index, "company", companyTimeline.company);
-      if (companyTimeline.title) {
-        markUsed(index, "title", companyTimeline.title);
-      }
-      markUsed(index, "timeline", companyTimeline.timeline);
+      consumeStructuredLine(index, {
+        company: companyTimeline.company,
+        title: companyTimeline.title || "",
+        timeline: companyTimeline.timeline || "",
+      });
       return;
     }
 
     const companyTitle = parseCompanyTitleLine(line);
 
     if (companyTitle) {
-      markUsed(index, "company", companyTitle.company);
-      markUsed(index, "title", companyTitle.title);
+      consumeStructuredLine(index, {
+        company: companyTitle.company,
+        title: companyTitle.title,
+      });
       return;
     }
 
     const titleTimeline = parseTitleTimelineLine(line);
 
     if (titleTimeline && looksLikeJobTitleLine(titleTimeline.title)) {
-      markUsed(index, "title", titleTimeline.title);
-      markUsed(index, "timeline", titleTimeline.timeline);
+      consumeStructuredLine(index, {
+        title: titleTimeline.title,
+        timeline: titleTimeline.timeline,
+      });
     }
   });
 
   lines.forEach((line, index) => {
-    if (usedIndexes.has(index)) {
+    if (consumedLines.has(index)) {
       return;
     }
 
     if (isTimelineText(line)) {
-      markUsed(index, "timeline", line);
+      markHeuristicLine(index, "timeline", line);
     }
   });
 
   if (profileHint) {
     lines.forEach((line, index) => {
-      if (usedIndexes.has(index)) {
+      if (consumedLines.has(index)) {
         return;
       }
 
@@ -592,43 +712,43 @@ export const parseExperienceHeaderLines = (headerLines = [], profileHint = null)
         profileHint.companyName &&
         compareTextsExactly(line, profileHint.companyName)
       ) {
-        markUsed(index, "company", line);
+        markHeuristicLine(index, "company", line);
         return;
       }
 
       if (profileHint.title && compareTextsExactly(line, profileHint.title)) {
-        markUsed(index, "title", line);
+        markHeuristicLine(index, "title", line);
       }
     });
   }
 
   lines.forEach((line, index) => {
-    if (usedIndexes.has(index)) {
+    if (consumedLines.has(index)) {
       return;
     }
 
     if (looksLikeJobTitleLine(line)) {
-      markUsed(index, "title", line);
+      markHeuristicLine(index, "title", line);
       return;
     }
 
     if (!fields.company && line.length <= 100) {
-      markUsed(index, "company", line);
+      markHeuristicLine(index, "company", line);
     }
   });
 
   lines.forEach((line, index) => {
-    if (usedIndexes.has(index)) {
+    if (consumedLines.has(index)) {
       return;
     }
 
     if (!fields.title) {
-      markUsed(index, "title", line);
+      markHeuristicLine(index, "title", line);
       return;
     }
 
     if (!fields.company) {
-      markUsed(index, "company", line);
+      markHeuristicLine(index, "company", line);
     }
   });
 
@@ -645,72 +765,97 @@ export const parseEducationBlockLines = (lines = [], profileHint = null) => {
     degree: "",
     timeline: "",
   };
-  const usedIndexes = new Set();
+  const consumedLines = new Set();
 
-  const markUsed = (index, key, value) => {
-    if (!value || usedIndexes.has(index)) {
+  const assignField = (key, value) => {
+    if (!value || fields[key]) {
       return;
     }
 
-    if (!fields[key]) {
-      fields[key] = value;
+    fields[key] = value;
+  };
+
+  const consumeStructuredLine = (index, values = {}) => {
+    Object.entries(values).forEach(([key, value]) => {
+      assignField(key, value);
+    });
+    consumedLines.add(index);
+  };
+
+  const markHeuristicLine = (index, key, value) => {
+    if (!value || consumedLines.has(index)) {
+      return;
     }
 
-    usedIndexes.add(index);
+    assignField(key, value);
+    consumedLines.add(index);
   };
 
   cleanLines.forEach((line, index) => {
-    const schoolDegree = parseSchoolDegreeLine(line);
+    const schoolDegreeTimeline = parseSchoolDegreeTimelineLine(line);
 
-    if (schoolDegree) {
-      markUsed(index, "school", schoolDegree.school);
-      markUsed(index, "degree", schoolDegree.degree);
+    if (schoolDegreeTimeline) {
+      consumeStructuredLine(index, schoolDegreeTimeline);
       return;
     }
 
-    if (isTimelineText(line)) {
-      markUsed(index, "timeline", line);
+    const schoolDegree = parseSchoolDegreeLine(line);
+
+    if (schoolDegree) {
+      consumeStructuredLine(index, schoolDegree);
+      return;
+    }
+
+    const degreeTimeline = parseDegreeTimelineLine(line);
+
+    if (degreeTimeline) {
+      consumeStructuredLine(index, degreeTimeline);
+      return;
+    }
+
+    if (isStandaloneEducationTimelineLine(line)) {
+      markHeuristicLine(index, "timeline", line);
     }
   });
 
   if (profileHint) {
     cleanLines.forEach((line, index) => {
-      if (usedIndexes.has(index)) {
+      if (consumedLines.has(index)) {
         return;
       }
 
       if (profileHint.school && compareTextsExactly(line, profileHint.school)) {
-        markUsed(index, "school", line);
+        markHeuristicLine(index, "school", line);
         return;
       }
 
       if (profileHint.degree && compareTextsExactly(line, profileHint.degree)) {
-        markUsed(index, "degree", line);
+        markHeuristicLine(index, "degree", line);
       }
     });
   }
 
   cleanLines.forEach((line, index) => {
-    if (usedIndexes.has(index)) {
+    if (consumedLines.has(index)) {
       return;
     }
 
     if (DEGREE_HINT.test(line)) {
-      markUsed(index, "degree", line);
+      markHeuristicLine(index, "degree", line);
     }
   });
 
   cleanLines.forEach((line, index) => {
-    if (usedIndexes.has(index)) {
+    if (consumedLines.has(index)) {
       return;
     }
 
     if (SCHOOL_HINT.test(line)) {
-      markUsed(index, "school", line);
+      markHeuristicLine(index, "school", line);
     }
   });
 
-  const remaining = cleanLines.filter((_, index) => !usedIndexes.has(index));
+  const remaining = cleanLines.filter((_, index) => !consumedLines.has(index));
 
   remaining.forEach((line) => {
     if (!fields.degree && DEGREE_HINT.test(line)) {
@@ -736,6 +881,172 @@ export const parseEducationBlockLines = (lines = [], profileHint = null) => {
   return fields;
 };
 
+const findEducationBlockMarkers = (lines = []) => {
+  const markers = [];
+
+  lines.forEach((line, lineIndex) => {
+    const trimmed = stripMarkdownInline(line).trim();
+
+    if (!trimmed || looksLikeJobTitleLine(trimmed)) {
+      return;
+    }
+
+    const schoolDegreeTimeline = parseSchoolDegreeTimelineLine(trimmed);
+
+    if (schoolDegreeTimeline) {
+      markers.push({
+        lineIndex,
+        anchor: "complete",
+        ...schoolDegreeTimeline,
+      });
+      return;
+    }
+
+    const degreeTimeline = parseDegreeTimelineLine(trimmed);
+
+    if (degreeTimeline) {
+      markers.push({
+        lineIndex,
+        anchor: "degreeTimeline",
+        school: "",
+        ...degreeTimeline,
+      });
+      return;
+    }
+
+    if (isStandaloneEducationTimelineLine(trimmed)) {
+      markers.push({
+        lineIndex,
+        anchor: "timeline",
+        school: "",
+        degree: "",
+        timeline: trimmed,
+      });
+    }
+  });
+
+  return markers;
+};
+
+const collectEducationHeaderLinesAroundMarker = (lines = [], markerLineIndex = 0) => {
+  const headerLines = [];
+  const start = Math.max(0, markerLineIndex - 4);
+
+  for (let lineIndex = start; lineIndex <= markerLineIndex; lineIndex += 1) {
+    const trimmed = stripMarkdownInline(lines[lineIndex] || "").trim();
+
+    if (!trimmed || isExperienceBodyLine(trimmed)) {
+      continue;
+    }
+
+    headerLines.push(trimmed);
+  }
+
+  for (
+    let lineIndex = markerLineIndex + 1;
+    lineIndex < Math.min(lines.length, markerLineIndex + 4);
+    lineIndex += 1
+  ) {
+    const trimmed = stripMarkdownInline(lines[lineIndex] || "").trim();
+
+    if (!trimmed) {
+      continue;
+    }
+
+    if (isExperienceBodyLine(trimmed)) {
+      break;
+    }
+
+    if (isEducationHeaderLine(trimmed)) {
+      headerLines.push(trimmed);
+      continue;
+    }
+
+    break;
+  }
+
+  return [...new Set(headerLines)];
+};
+
+const getEducationMarkerStartLine = (lines = [], markerLineIndex = 0) => {
+  let startLine = markerLineIndex;
+
+  for (
+    let lineIndex = markerLineIndex - 1;
+    lineIndex >= Math.max(0, markerLineIndex - 4);
+    lineIndex -= 1
+  ) {
+    const trimmed = stripMarkdownInline(lines[lineIndex] || "").trim();
+
+    if (!trimmed || isExperienceBodyLine(trimmed)) {
+      break;
+    }
+
+    if (
+      parseDegreeTimelineLine(trimmed) ||
+      parseSchoolDegreeTimelineLine(trimmed) ||
+      isStandaloneEducationTimelineLine(trimmed)
+    ) {
+      break;
+    }
+
+    if (isEducationHeaderLine(trimmed)) {
+      startLine = lineIndex;
+      continue;
+    }
+
+    break;
+  }
+
+  return startLine;
+};
+
+const findSchoolOnlyStartIndexes = (lines = []) => {
+  const indexes = [];
+
+  lines.forEach((line, lineIndex) => {
+    const trimmed = stripMarkdownInline(line).trim();
+
+    if (!trimmed) {
+      return;
+    }
+
+    if (
+      SCHOOL_HINT.test(trimmed) &&
+      !parseSchoolDegreeLine(trimmed) &&
+      !parseSchoolDegreeTimelineLine(trimmed) &&
+      !parseDegreeTimelineLine(trimmed) &&
+      !isStandaloneEducationTimelineLine(trimmed) &&
+      !looksLikeJobTitleLine(trimmed)
+    ) {
+      indexes.push(lineIndex);
+    }
+  });
+
+  return indexes;
+};
+
+const parseEducationBlocksFromIndexes = (
+  lines = [],
+  startIndexes = [],
+  profileEducation = []
+) => {
+  return startIndexes
+    .map((startLine, index) => {
+      const endLine = startIndexes[index + 1] ?? lines.length;
+      const blockLines = lines
+        .slice(startLine, endLine)
+        .map((line) => stripMarkdownInline(line).trim())
+        .filter(Boolean);
+
+      return parseEducationBlockLines(
+        blockLines,
+        profileEducation[index] || null
+      );
+    })
+    .filter((entry) => entry && (entry.school || entry.degree || entry.timeline));
+};
+
 export const parseEducationEntries = (
   educationText = "",
   profileEducation = []
@@ -747,80 +1058,82 @@ export const parseEducationEntries = (
   }
 
   const lines = text.split("\n");
-  const timelineIndexes = [];
+  const markers = findEducationBlockMarkers(lines);
 
-  lines.forEach((line, lineIndex) => {
-    const trimmed = stripMarkdownInline(line).trim();
+  if (markers.length > 0) {
+    const uniqueMarkers = [];
+    const seenStartLines = new Set();
 
-    if (trimmed && isTimelineText(trimmed) && !looksLikeJobTitleLine(trimmed)) {
-      timelineIndexes.push(lineIndex);
-    }
-  });
+    markers.forEach((marker) => {
+      const startLine = getEducationMarkerStartLine(lines, marker.lineIndex);
 
-  if (timelineIndexes.length === 0) {
-    return text
-      .split(/\n\s*\n/)
-      .map((block) => block.trim())
-      .filter(Boolean)
+      if (seenStartLines.has(startLine)) {
+        return;
+      }
+
+      seenStartLines.add(startLine);
+      uniqueMarkers.push({
+        ...marker,
+        startLine,
+      });
+    });
+
+    return uniqueMarkers
+      .map((marker, index) => {
+        const headerLines = collectEducationHeaderLinesAroundMarker(
+          lines,
+          marker.lineIndex
+        );
+
+        return parseEducationBlockLines(
+          headerLines,
+          profileEducation[index] || null
+        );
+      })
+      .filter((entry) => entry && (entry.school || entry.degree || entry.timeline));
+  }
+
+  const schoolStarts = findSchoolOnlyStartIndexes(lines);
+
+  if (schoolStarts.length > 1) {
+    return parseEducationBlocksFromIndexes(lines, schoolStarts, profileEducation);
+  }
+
+  const blankLineBlocks = text
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  if (blankLineBlocks.length > 1) {
+    return blankLineBlocks
       .map((block, index) => {
         const blockLines = block
           .split("\n")
           .map((line) => stripMarkdownInline(line).trim())
           .filter(Boolean);
 
-        return parseEducationBlockLines(blockLines, profileEducation[index] || null);
+        return parseEducationBlockLines(
+          blockLines,
+          profileEducation[index] || null
+        );
       })
       .filter((entry) => entry && (entry.school || entry.degree || entry.timeline));
   }
 
-  return timelineIndexes
-    .map((timelineIndex, index) => {
-      const headerLines = [];
-      const start = Math.max(0, timelineIndex - 4);
+  const blockLines = lines
+    .map((line) => stripMarkdownInline(line).trim())
+    .filter(Boolean);
 
-      for (let lineIndex = start; lineIndex <= timelineIndex; lineIndex += 1) {
-        const trimmed = stripMarkdownInline(lines[lineIndex] || "").trim();
+  const singleEntry = parseEducationBlockLines(
+    blockLines,
+    profileEducation[0] || null
+  );
 
-        if (!trimmed || isExperienceBodyLine(trimmed)) {
-          continue;
-        }
+  if (singleEntry.school || singleEntry.degree || singleEntry.timeline) {
+    return [singleEntry];
+  }
 
-        headerLines.push(trimmed);
-      }
-
-      for (
-        let lineIndex = timelineIndex + 1;
-        lineIndex < Math.min(lines.length, timelineIndex + 4);
-        lineIndex += 1
-      ) {
-        const trimmed = stripMarkdownInline(lines[lineIndex] || "").trim();
-
-        if (!trimmed) {
-          continue;
-        }
-
-        if (isTimelineText(trimmed) || isExperienceBodyLine(trimmed)) {
-          break;
-        }
-
-        if (
-          DEGREE_HINT.test(trimmed) ||
-          SCHOOL_HINT.test(trimmed) ||
-          parseSchoolDegreeLine(trimmed)
-        ) {
-          headerLines.push(trimmed);
-          continue;
-        }
-
-        break;
-      }
-
-      return parseEducationBlockLines(
-        [...new Set(headerLines)],
-        profileEducation[index] || null
-      );
-    })
-    .filter((entry) => entry && (entry.school || entry.degree || entry.timeline));
+  return [];
 };
 
 const findExperienceBlockMarkers = (lines = []) => {
