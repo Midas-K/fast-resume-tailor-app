@@ -93,11 +93,12 @@ function App() {
       return undefined;
     }
 
+    warmBuildResumeApi();
+
     if (!canUseFolderPicker()) {
       return undefined;
     }
 
-    warmBuildResumeApi();
     warmCustomerRootFolder().catch(() => {});
 
     return undefined;

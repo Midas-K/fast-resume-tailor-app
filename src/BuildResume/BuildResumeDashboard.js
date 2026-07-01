@@ -7,15 +7,18 @@ import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
 import { fetchProfileById } from "../Profile/api/profileApi";
 import { buildResumeFromProfile, warmBuildResumeApi } from "../shared/api/buildResumeApi";
 import {
+  buildResumeSavedMessage,
   canUseFolderPicker,
   changeCustomerRootFolder,
   FOLDER_PICKER_REQUIRED_MESSAGE,
   FOLDER_PICKER_USER_HINT,
   getLocalDayBounds,
   getCachedCustomerRootFolder,
+  MOBILE_ZIP_SAVE_HINT,
   prepareResumeSaveFolder,
   warmCustomerRootFolder,
-  saveResumeToCustomerFolder,
+  saveResumeToDevice,
+  usesStructuredZipFallback,
 } from "../services/fileSystemSaveService";
 
 function getTemplateLabel(profile) {
@@ -32,7 +35,9 @@ function BuildResumeDashboard({
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
-  const [saveFolderReady, setSaveFolderReady] = useState(canUseFolderPicker());
+  const [saveFolderReady, setSaveFolderReady] = useState(
+    canUseFolderPicker() || usesStructuredZipFallback()
+  );
   const [profile, setProfile] = useState(selectedProfile);
 
   useEffect(() => {
@@ -40,13 +45,14 @@ function BuildResumeDashboard({
   }, [selectedProfile]);
 
   useEffect(() => {
+    warmBuildResumeApi();
+
     if (!canUseFolderPicker()) {
       return undefined;
     }
 
     let cancelled = false;
 
-    warmBuildResumeApi();
     warmCustomerRootFolder()
       .then((selection) => {
         if (!cancelled) {
@@ -99,7 +105,7 @@ function BuildResumeDashboard({
       await changeCustomerRootFolder();
       setSaveFolderReady(true);
       alert(
-        "Save folder updated on your laptop/computer. Your next resume will be saved there."
+        "Save folder updated on your device. Your next resume will be saved there."
       );
     } catch (error) {
       if (
@@ -124,18 +130,17 @@ function BuildResumeDashboard({
       return;
     }
 
-    if (!canUseFolderPicker()) {
-      alert(FOLDER_PICKER_REQUIRED_MESSAGE);
-      return;
-    }
-
     const templateLabel = getTemplateLabel(profile);
     const templateNote = profile.resume_template_id
       ? "This is the template your admin assigned to your profile."
       : "No custom template is assigned, so the admin default template will be used.";
 
+    const saveNote = usesStructuredZipFallback()
+      ? "The PDF will download as a zip with the same folder layout as desktop."
+      : "Choose a folder on your device. The PDF will be saved there only.";
+
     const confirmed = window.confirm(
-      `Build resume with this admin template?\n\nTemplate: ${templateLabel}\n${templateNote}\n\nNext, choose a folder on your laptop/computer. The PDF will be saved there only.`
+      `Build resume with this admin template?\n\nTemplate: ${templateLabel}\n${templateNote}\n\n${saveNote}`
     );
 
     if (!confirmed) {
@@ -156,10 +161,14 @@ function BuildResumeDashboard({
         recordApplication: true,
       };
 
-      const cachedFolder = getCachedCustomerRootFolder();
-      const folderPromise = cachedFolder
-        ? prepareResumeSaveFolder(cachedFolder.handle).then(() => cachedFolder)
-        : warmCustomerRootFolder();
+      const folderPromise = canUseFolderPicker()
+        ? (() => {
+            const cachedFolder = getCachedCustomerRootFolder();
+            return cachedFolder
+              ? prepareResumeSaveFolder(cachedFolder.handle).then(() => cachedFolder)
+              : warmCustomerRootFolder();
+          })()
+        : Promise.resolve(null);
 
       const [folderSelection, buildResult] = await Promise.all([
         folderPromise,
@@ -173,23 +182,25 @@ function BuildResumeDashboard({
         usesDefaultTemplate,
       } = buildResult;
 
-      setSaveFolderReady(true);
+      if (folderSelection?.handle) {
+        setSaveFolderReady(true);
+      }
 
-      const saveResult = await saveResumeToCustomerFolder({
+      const saveResult = await saveResumeToDevice({
         pdfBlob: blob,
         profileName: profile.name || "Profile",
         companyName: companyName.trim(),
         roleName: roleName.trim(),
         applicationNumber: sequenceNumber || 1,
-        rootDirectoryHandle: folderSelection.handle,
+        rootDirectoryHandle: folderSelection?.handle || null,
       });
 
       resetApplicationInputs();
 
       alert(
-        `Resume saved to your laptop/computer!\n\nTemplate: ${templateNameFromServer || templateLabel}${
+        `${buildResumeSavedMessage(saveResult)}\n\nTemplate: ${templateNameFromServer || templateLabel}${
           usesDefaultTemplate ? " (admin default)" : " (admin assigned)"
-        }\nPath: ${saveResult.savedPath || `${saveResult.dateFolder}/${saveResult.companyRoleFolder}/${saveResult.fileName}`}`
+        }`
       );
     } catch (error) {
       if (
@@ -288,18 +299,22 @@ function BuildResumeDashboard({
           <div className="resume-save-folder-note">
             <Icon name="folder" size={14} />
             <p>
-              {saveFolderReady
-                ? "Saves to a folder on your laptop or computer."
-                : FOLDER_PICKER_USER_HINT}
+              {usesStructuredZipFallback()
+                ? MOBILE_ZIP_SAVE_HINT
+                : saveFolderReady
+                  ? "Saves to your chosen folder using US Eastern (EST/EDT) date folders."
+                  : FOLDER_PICKER_USER_HINT}
             </p>
-            <IconButton
-              icon="folder"
-              label="Change save folder"
-              variant="ghost"
-              size="sm"
-              disabled={loading}
-              onClick={handleChangeSaveFolder}
-            />
+            {!usesStructuredZipFallback() && (
+              <IconButton
+                icon="folder"
+                label="Change save folder"
+                variant="ghost"
+                size="sm"
+                disabled={loading}
+                onClick={handleChangeSaveFolder}
+              />
+            )}
           </div>
 
           <div className="fast-actions-row">

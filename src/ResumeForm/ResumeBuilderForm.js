@@ -6,15 +6,18 @@ import { buildResumeFromTemplate, warmBuildResumeApi } from "../shared/api/build
 import { parseJsonField } from "../shared/utils/format";
 import { parseAndValidateResumePaste } from "../shared/utils/parseResumeSections";
 import {
+  buildResumeSavedMessage,
   canUseFolderPicker,
   changeCustomerRootFolder,
   FOLDER_PICKER_USER_HINT,
   FOLDER_PICKER_REQUIRED_MESSAGE,
   getLocalDayBounds,
   getCachedCustomerRootFolder,
+  MOBILE_ZIP_SAVE_HINT,
   prepareResumeSaveFolder,
   warmCustomerRootFolder,
-  saveResumeToCustomerFolder,
+  saveResumeToDevice,
+  usesStructuredZipFallback,
 } from "../services/fileSystemSaveService";
 
 const scheduleIdle =
@@ -44,7 +47,9 @@ function ResumeBuilderForm({
     mismatches: [],
   });
   const [loading, setLoading] = useState(false);
-  const [saveFolderReady, setSaveFolderReady] = useState(canUseFolderPicker());
+  const [saveFolderReady, setSaveFolderReady] = useState(
+    canUseFolderPicker() || usesStructuredZipFallback()
+  );
   const [, startParseTransition] = useTransition();
   const parsedSnapshotRef = useRef({
     summary: "",
@@ -74,13 +79,14 @@ function ResumeBuilderForm({
   );
 
   useEffect(() => {
+    warmBuildResumeApi();
+
     if (!canUseFolderPicker()) {
       return undefined;
     }
 
     let cancelled = false;
 
-    warmBuildResumeApi();
     warmCustomerRootFolder()
       .then((selection) => {
         if (!cancelled) {
@@ -451,18 +457,22 @@ CERTIFICATIONS`}
       <div className="resume-save-folder-note">
         <Icon name="folder" size={14} />
         <p>
-          {saveFolderReady
-            ? "Saves to a folder on your laptop or computer."
-            : FOLDER_PICKER_USER_HINT}
+          {usesStructuredZipFallback()
+            ? MOBILE_ZIP_SAVE_HINT
+            : saveFolderReady
+              ? "Saves to your chosen folder using US Eastern (EST/EDT) date folders."
+              : FOLDER_PICKER_USER_HINT}
         </p>
-        <IconButton
-          icon="folder"
-          label="Change save folder"
-          variant="ghost"
-          size="sm"
-          disabled={loading}
-          onClick={handleChangeSaveFolder}
-        />
+        {!usesStructuredZipFallback() && (
+          <IconButton
+            icon="folder"
+            label="Change save folder"
+            variant="ghost"
+            size="sm"
+            disabled={loading}
+            onClick={handleChangeSaveFolder}
+          />
+        )}
       </div>
       <IconButton
         icon="fileDown"
@@ -480,11 +490,6 @@ CERTIFICATIONS`}
     const parsed = validateRequiredFields();
 
     if (!parsed) {
-      return;
-    }
-
-    if (!canUseFolderPicker()) {
-      alert(FOLDER_PICKER_REQUIRED_MESSAGE);
       return;
     }
 
@@ -522,10 +527,14 @@ CERTIFICATIONS`}
           })
         : undefined;
 
-      const cachedFolder = getCachedCustomerRootFolder();
-      const folderPromise = cachedFolder
-        ? prepareResumeSaveFolder(cachedFolder.handle).then(() => cachedFolder)
-        : warmCustomerRootFolder();
+      const folderPromise = canUseFolderPicker()
+        ? (() => {
+            const cachedFolder = getCachedCustomerRootFolder();
+            return cachedFolder
+              ? prepareResumeSaveFolder(cachedFolder.handle).then(() => cachedFolder)
+              : warmCustomerRootFolder();
+          })()
+        : Promise.resolve(null);
 
       const [folderSelection, { blob, sequenceNumber }] = await Promise.all([
         folderPromise,
@@ -534,16 +543,17 @@ CERTIFICATIONS`}
         }),
       ]);
 
-      const rootDirectoryHandle = folderSelection.handle;
-      setSaveFolderReady(true);
+      if (folderSelection?.handle) {
+        setSaveFolderReady(true);
+      }
 
-      const saveResultPromise = saveResumeToCustomerFolder({
+      const saveResultPromise = saveResumeToDevice({
         pdfBlob: blob,
         profileName: selectedProfile?.name || "Profile",
         companyName: appliedCompany?.trim() || "Unknown Company",
         roleName: appliedRole?.trim() || "Unknown Role",
         applicationNumber: sequenceNumber || 1,
-        rootDirectoryHandle,
+        rootDirectoryHandle: folderSelection?.handle || null,
       });
 
       clearResumeInputs();
@@ -551,9 +561,7 @@ CERTIFICATIONS`}
 
       const saveResult = await saveResultPromise;
 
-      alert(
-        `Resume saved to your laptop/computer!\n${saveResult.savedPath || `${saveResult.dateFolder}/${saveResult.companyRoleFolder}/${saveResult.fileName}`}`
-      );
+      alert(buildResumeSavedMessage(saveResult));
     } catch (error) {
       if (
         error?.name === "AbortError" ||
@@ -578,7 +586,7 @@ CERTIFICATIONS`}
       await changeCustomerRootFolder();
       setSaveFolderReady(true);
       alert(
-        "Save folder updated on your laptop/computer. Your next resume will be saved there."
+        "Save folder updated on your device. Your next resume will be saved there."
       );
     } catch (error) {
       if (
@@ -610,8 +618,8 @@ CERTIFICATIONS`}
           {!compact && (
             <p>
               The assigned admin DOCX template is filled, converted to PDF, and
-              saved to a folder on your laptop or computer. You choose where
-              it goes — the file stays on your device.
+              saved on your device with the same date/company folder structure as
+              desktop.
             </p>
           )}
         </div>

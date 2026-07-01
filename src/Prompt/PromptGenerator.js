@@ -1,6 +1,11 @@
 import IconButton from "../UI/IconButton";
 import { API_URL, authHeaders } from "../shared/api/client";
 import { cachedJsonGet } from "../shared/api/cache";
+import {
+  buildNonRemoteConfirmMessage,
+  detectJobDescriptionWorkMode,
+  shouldConfirmNonRemoteCopy,
+} from "../shared/utils/detectJobDescriptionWorkMode";
 
 function PromptGenerator({
   jobDescription = "",
@@ -223,6 +228,15 @@ ${jobDescription}
             alert(
               "Please select a profile and enter role name, company name, and job description first."
             );
+            return;
+          }
+
+          const workMode = detectJobDescriptionWorkMode(jobDescription);
+
+          if (
+            shouldConfirmNonRemoteCopy(workMode) &&
+            !window.confirm(buildNonRemoteConfirmMessage(workMode))
+          ) {
             return;
           }
       

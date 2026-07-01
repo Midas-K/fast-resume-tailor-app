@@ -167,6 +167,22 @@ select {
   gap: 22px;
 }
 
+.app-sidebar-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-sidebar-close,
+.app-mobile-menu-btn {
+  display: none;
+}
+
+.app-sidebar-overlay {
+  display: none;
+}
+
 .brand-block {
   display: flex;
   align-items: center;
@@ -1363,7 +1379,65 @@ select {
     display: block;
   }
 
-  .app-sidebar,
+  .app-mobile-menu-btn {
+    display: inline-flex;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 220;
+    width: 42px;
+    height: 42px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.96);
+    color: #0f172a;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  }
+
+  .app-sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 230;
+    border: 0;
+    padding: 0;
+    background: rgba(15, 23, 42, 0.45);
+    cursor: pointer;
+  }
+
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 240;
+    width: min(290px, 88vw);
+    height: 100vh;
+    max-height: 100vh;
+    overflow-y: auto;
+    transform: translateX(-105%);
+    transition: transform 0.22s ease;
+    box-shadow: 24px 0 60px rgba(15, 23, 42, 0.28);
+  }
+
+  .app-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .app-sidebar-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.08);
+    color: white;
+    flex-shrink: 0;
+  }
+
   .admin-sidebar {
     position: static;
     width: 100%;
@@ -1373,7 +1447,11 @@ select {
   .admin-main {
     width: 100%;
     margin-left: 0;
-    padding: 20px;
+    padding: 68px 14px 18px;
+  }
+
+  .app-main--fit {
+    padding: 58px 10px 12px;
   }
 
   .workspace-header,
@@ -1383,6 +1461,33 @@ select {
     grid-template-columns: 1fr;
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .workspace-header--fit {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .workspace-header--fit .workspace-header-copy {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .workspace-header--fit h1 {
+    font-size: clamp(22px, 7vw, 30px);
+    line-height: 1.05;
+  }
+
+  .workspace-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .account-pill--icon {
+    max-width: min(180px, 42vw);
   }
 
   .admin-hero-card {
@@ -1399,6 +1504,48 @@ select {
   .fast-side-panel,
   .profile-application-counts {
     grid-template-columns: 1fr;
+  }
+
+  .fast-apply-workspace,
+  .fast-apply-workspace--fit,
+  .app-main--fit .fast-apply-workspace {
+    grid-template-columns: 1fr;
+    overflow: visible;
+    min-height: auto;
+  }
+
+  .app-main--fit .fast-apply-card,
+  .app-main--fit .fast-resume-panel,
+  .fast-apply-workspace--fit .fast-apply-card,
+  .fast-apply-workspace--fit .fast-resume-panel {
+    height: auto;
+    min-height: 0;
+    overflow: visible !important;
+  }
+
+  .app-main--fit .fast-jd-textarea {
+    min-height: 180px;
+    max-height: 42vh;
+  }
+
+  .fast-actions-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .fast-readiness {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .resume-save-folder-note {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .resume-form-compact__profile {
+    max-height: none;
   }
 
   .profile-list-item {
@@ -3203,6 +3350,13 @@ select {
   align-items: center;
   gap: 8px;
   cursor: default;
+  max-width: 220px;
+}
+
+.account-pill__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-profile-btn,
@@ -4585,7 +4739,7 @@ select {
 @media (max-width: 1100px) {
   .resume-form-compact__split {
     grid-template-columns: 1fr;
-    overflow: auto;
+    overflow: visible;
   }
 
   .resume-form-compact__profile {
@@ -4593,10 +4747,40 @@ select {
     border-bottom: 1px solid var(--border);
     padding-right: 0;
     padding-bottom: 10px;
-    max-height: 42vh;
+    max-height: none;
   }
 
   .resume-form-compact__editor {
     min-height: 280px;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-main--fit {
+    padding: 54px 8px 10px;
+  }
+
+  .fast-apply-card,
+  .fast-resume-panel .resume-form-card,
+  .resume-form-compact {
+    border-radius: 14px;
+    padding: 12px !important;
+  }
+
+  .workspace-actions .icon-btn--ghost[aria-label="Profiles"] {
+    display: none;
+  }
+
+  .account-pill__name {
+    display: none;
+  }
+
+  .resume-meta-strip {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .resume-form-footer--solo .icon-btn--lg {
+    width: 100%;
   }
 }

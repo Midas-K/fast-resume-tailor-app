@@ -1,3 +1,8 @@
+import { zipSync } from "fflate";
+import {
+  formatEstFolderDate,
+  getEstDayBounds,
+} from "../shared/utils/estDateTime";
 import {
   clearStoredCustomerRootHandle,
   getStoredCustomerRootHandle,
@@ -56,26 +61,22 @@ const sanitizeFileName = (value, fallback = "First_Last") => {
   return cleaned || fallback;
 };
 
-export const getTodayFolderName = () => {
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const day = now.getDate();
-
-  return sanitizeFolderName(`${month}.${day}`, "Today");
+export const getTodayFolderName = (date = new Date()) => {
+  return sanitizeFolderName(formatEstFolderDate(date), "Today");
 };
 
-export const getLocalDayBounds = () => {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+export const getEstResumeDayBounds = (date = new Date()) => {
+  const { dayStart, dayEnd } = getEstDayBounds(date);
 
   return {
-    dayStart: start.toISOString(),
-    dayEnd: end.toISOString(),
-    dateFolder: getTodayFolderName(),
+    dayStart,
+    dayEnd,
+    dateFolder: getTodayFolderName(date),
+    timeZone: "America/New_York",
   };
 };
+
+export const getLocalDayBounds = getEstResumeDayBounds;
 
 const buildNumberedCompanyRoleFolder = ({
   applicationNumber,
@@ -153,15 +154,173 @@ const resolveApplicationFolderNumber = async ({
   return localNext;
 };
 
+export const buildResumeSaveLocation = async ({
+  companyName,
+  roleName,
+  profileName,
+  applicationNumber = 1,
+  dateDirectoryHandle = null,
+}) => {
+  const dateFolder = getTodayFolderName();
+  const resolvedApplicationNumber = await resolveApplicationFolderNumber({
+    dateDirectoryHandle,
+    applicationNumber,
+  });
+  const companyRoleFolder = buildNumberedCompanyRoleFolder({
+    applicationNumber: resolvedApplicationNumber,
+    companyName,
+    roleName,
+  });
+  const fileName = `${sanitizeFileName(profileName, "First_Last")}.pdf`;
+
+  return {
+    dateFolder,
+    companyRoleFolder,
+    fileName,
+    applicationNumber: resolvedApplicationNumber,
+    savedPath: `${dateFolder}/${companyRoleFolder}/${fileName}`,
+  };
+};
+
+const MOBILE_SEQUENCE_KEY = "frt-mobile-save-seq";
+
+const getMobileSequenceStore = () => {
+  try {
+    return JSON.parse(localStorage.getItem(MOBILE_SEQUENCE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+};
+
+const rememberMobileSequence = (dateFolder, sequence) => {
+  const store = getMobileSequenceStore();
+  const nextValue = Math.max(Number(store[dateFolder]) || 0, Number(sequence) || 0);
+
+  store[dateFolder] = nextValue;
+  localStorage.setItem(MOBILE_SEQUENCE_KEY, JSON.stringify(store));
+};
+
+const resolveMobileApplicationNumber = (applicationNumber) => {
+  const dateFolder = getTodayFolderName();
+  const store = getMobileSequenceStore();
+  const localNext = (Number(store[dateFolder]) || 0) + 1;
+  const serverNumber = Number(applicationNumber);
+
+  if (Number.isFinite(serverNumber) && serverNumber >= 1) {
+    return Math.max(serverNumber, localNext);
+  }
+
+  return localNext;
+};
+
+const buildResumeSaveLocationForDownload = ({
+  companyName,
+  roleName,
+  profileName,
+  applicationNumber = 1,
+}) => {
+  const dateFolder = getTodayFolderName();
+  const resolvedApplicationNumber = resolveMobileApplicationNumber(applicationNumber);
+  const companyRoleFolder = buildNumberedCompanyRoleFolder({
+    applicationNumber: resolvedApplicationNumber,
+    companyName,
+    roleName,
+  });
+  const fileName = `${sanitizeFileName(profileName, "First_Last")}.pdf`;
+
+  return {
+    dateFolder,
+    companyRoleFolder,
+    fileName,
+    applicationNumber: resolvedApplicationNumber,
+    savedPath: `${dateFolder}/${companyRoleFolder}/${fileName}`,
+  };
+};
+
+const toUint8Array = async (filePayload) => {
+  if (filePayload instanceof Uint8Array) {
+    return filePayload;
+  }
+
+  if (filePayload instanceof ArrayBuffer) {
+    return new Uint8Array(filePayload);
+  }
+
+  if (filePayload?.arrayBuffer) {
+    return new Uint8Array(await filePayload.arrayBuffer());
+  }
+
+  throw new Error("Resume PDF data is missing.");
+};
+
+const triggerBlobDownload = (blob, fileName) => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
+const saveResumeAsStructuredZip = async ({
+  pdfBytes,
+  pdfBlob = null,
+  profileName = "First_Last",
+  companyName = "Unknown Company",
+  roleName = "Unknown Role",
+  applicationNumber = 1,
+}) => {
+  const filePayload = pdfBlob || pdfBytes;
+
+  if (!filePayload) {
+    throw new Error("Resume PDF data is missing.");
+  }
+
+  const location = buildResumeSaveLocationForDownload({
+    profileName,
+    companyName,
+    roleName,
+    applicationNumber,
+  });
+  const zipPath = `${location.dateFolder}/${location.companyRoleFolder}/${location.fileName}`;
+  const zipped = zipSync({
+    [zipPath]: await toUint8Array(filePayload),
+  });
+  const zipBlob = new Blob([zipped], { type: "application/zip" });
+  const zipFileName = sanitizeFolderName(
+    `${location.dateFolder} - ${location.companyRoleFolder}`,
+    "resume-save"
+  );
+
+  triggerBlobDownload(zipBlob, `${zipFileName}.zip`);
+  rememberMobileSequence(location.dateFolder, location.applicationNumber);
+
+  return {
+    ...location,
+    saveMode: "zip",
+    zipFileName: `${zipFileName}.zip`,
+  };
+};
+
 export const FOLDER_PICKER_REQUIRED_MESSAGE =
-  "Select a folder on your laptop or computer to save your resume. Use Chrome or Edge (HTTPS or localhost), then choose a local folder such as Documents or Desktop. Files stay on your device only.";
+  "Select a folder on your device to save your resume. Use Chrome or Edge (HTTPS or localhost), then choose a local folder such as Documents, Desktop, or Downloads. Files stay on your device only.";
 
 export const FOLDER_PICKER_USER_HINT =
-  "Choose a folder on your laptop or computer (Documents, Desktop, or any local drive). The file is saved on your device, not on the server.";
+  "Choose a folder on your device (Documents, Desktop, Downloads, or any local drive). Resumes are grouped by US Eastern (EST/EDT) date folders.";
+
+export const MOBILE_ZIP_SAVE_HINT =
+  "Your phone cannot pick a folder directly in this browser. We download a zip with the same US Eastern (EST/EDT) date/company folder layout as desktop. Unzip it in Files or Downloads to get the same structure.";
 
 export const canUseFolderPicker = () => {
   return Boolean(window.showDirectoryPicker && window.isSecureContext);
 };
+
+export const usesStructuredZipFallback = () => !canUseFolderPicker();
+
+export const canSaveResumeToDevice = () => true;
 
 let cachedRootFolderSelection = null;
 let cachedDateFolderSelection = null;
@@ -317,25 +476,20 @@ export const saveResumeToCustomerFolder = async ({
     rememberDateFolderSelection(rootDirectoryHandle, dateFolder, dateDirectoryHandle);
   }
 
-  const resolvedApplicationNumber = await resolveApplicationFolderNumber({
-    dateDirectoryHandle,
-    applicationNumber,
-  });
-
-  const companyRoleFolder = buildNumberedCompanyRoleFolder({
-    applicationNumber: resolvedApplicationNumber,
+  const location = await buildResumeSaveLocation({
     companyName,
     roleName,
+    profileName,
+    applicationNumber,
+    dateDirectoryHandle,
   });
 
-  const fileName = `${sanitizeFileName(profileName, "First_Last")}.pdf`;
-
   const companyRoleDirectoryHandle =
-    await dateDirectoryHandle.getDirectoryHandle(companyRoleFolder, {
+    await dateDirectoryHandle.getDirectoryHandle(location.companyRoleFolder, {
       create: true,
     });
 
-  const fileHandle = await companyRoleDirectoryHandle.getFileHandle(fileName, {
+  const fileHandle = await companyRoleDirectoryHandle.getFileHandle(location.fileName, {
     create: true,
   });
 
@@ -344,10 +498,55 @@ export const saveResumeToCustomerFolder = async ({
   await writable.close();
 
   return {
-    dateFolder,
-    companyRoleFolder,
-    fileName,
-    applicationNumber: resolvedApplicationNumber,
-    savedPath: `${dateFolder}/${companyRoleFolder}/${fileName}`,
+    ...location,
+    saveMode: "folder",
   };
+};
+
+export const saveResumeToDevice = async ({
+  pdfBytes,
+  pdfBlob = null,
+  profileName = "First_Last",
+  companyName = "Unknown Company",
+  roleName = "Unknown Role",
+  applicationNumber = 1,
+  rootDirectoryHandle = null,
+}) => {
+  if (canUseFolderPicker()) {
+    const handle =
+      rootDirectoryHandle ||
+      cachedRootFolderSelection?.handle ||
+      (await warmCustomerRootFolder()).handle;
+
+    return saveResumeToCustomerFolder({
+      pdfBytes,
+      pdfBlob,
+      profileName,
+      companyName,
+      roleName,
+      applicationNumber,
+      rootDirectoryHandle: handle,
+    });
+  }
+
+  return saveResumeAsStructuredZip({
+    pdfBytes,
+    pdfBlob,
+    profileName,
+    companyName,
+    roleName,
+    applicationNumber,
+  });
+};
+
+export const buildResumeSavedMessage = (saveResult) => {
+  const savedPath =
+    saveResult?.savedPath ||
+    `${saveResult?.dateFolder}/${saveResult?.companyRoleFolder}/${saveResult?.fileName}`;
+
+  if (saveResult?.saveMode === "zip") {
+    return `Resume saved to Downloads as a zip with the same folder layout as desktop.\n${savedPath}\nUnzip ${saveResult.zipFileName || "the download"} to open it.`;
+  }
+
+  return `Resume saved to your device!\n${savedPath}`;
 };
