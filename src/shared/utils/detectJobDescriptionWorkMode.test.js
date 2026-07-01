@@ -41,11 +41,20 @@ describe("detectJobDescriptionWorkMode", () => {
   });
 
   test("builds confirm message for non-remote roles", () => {
-    const workMode = detectJobDescriptionWorkMode("Hybrid role in NYC.");
+    const hybridMode = detectJobDescriptionWorkMode("Hybrid role in NYC.");
 
-    expect(shouldConfirmNonRemoteCopy(workMode)).toBe(true);
-    expect(buildNonRemoteConfirmMessage(workMode)).toBe(
-      "This is not Remote role. This is Hybrid role. Still wanna continue?"
+    expect(shouldConfirmNonRemoteCopy(hybridMode)).toBe(true);
+    expect(buildNonRemoteConfirmMessage(hybridMode)).toBe(
+      "This is not a Remote role. This is a Hybrid role. Still wanna continue?"
+    );
+
+    const unmentionedMode = detectJobDescriptionWorkMode(
+      "Senior Engineer on our Applied AI team with LLM and RAG experience."
+    );
+
+    expect(shouldConfirmNonRemoteCopy(unmentionedMode)).toBe(true);
+    expect(buildNonRemoteConfirmMessage(unmentionedMode)).toBe(
+      "This is not a Remote role. The JD does not mention Remote, On-site, or Hybrid. Still wanna continue?"
     );
   });
 

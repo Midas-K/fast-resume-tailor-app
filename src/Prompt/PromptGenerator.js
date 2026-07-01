@@ -1,4 +1,5 @@
 import IconButton from "../UI/IconButton";
+import { useToast } from "../UI/ToastProvider";
 import { API_URL, authHeaders } from "../shared/api/client";
 import { cachedJsonGet } from "../shared/api/cache";
 import {
@@ -13,6 +14,8 @@ function PromptGenerator({
   companyName = "",
   selectedProfile = null,
 }) {
+  const { showConfirm } = useToast();
+
   const parseJsonField = (value) => {
     if (!value) return [];
 
@@ -233,11 +236,19 @@ ${jobDescription}
 
           const workMode = detectJobDescriptionWorkMode(jobDescription);
 
-          if (
-            shouldConfirmNonRemoteCopy(workMode) &&
-            !window.confirm(buildNonRemoteConfirmMessage(workMode))
-          ) {
-            return;
+          if (shouldConfirmNonRemoteCopy(workMode)) {
+            const confirmed = await showConfirm(
+              buildNonRemoteConfirmMessage(workMode),
+              {
+                title: "Not a Remote role",
+                confirmLabel: "Continue",
+                cancelLabel: "Cancel",
+              }
+            );
+
+            if (!confirmed) {
+              return;
+            }
           }
       
           try {

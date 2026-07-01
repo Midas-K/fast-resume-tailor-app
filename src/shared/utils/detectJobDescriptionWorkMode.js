@@ -84,7 +84,17 @@ export const shouldConfirmNonRemoteCopy = (workMode) =>
   workMode?.type !== WORK_LOCATION_TYPES.REMOTE;
 
 export const buildNonRemoteConfirmMessage = (workMode) => {
-  const roleType = workMode?.label || "didn't mention";
+  const messageByType = {
+    [WORK_LOCATION_TYPES.ONSITE]:
+      "This is not a Remote role. This is an On-site role. Still wanna continue?",
+    [WORK_LOCATION_TYPES.HYBRID]:
+      "This is not a Remote role. This is a Hybrid role. Still wanna continue?",
+    [WORK_LOCATION_TYPES.UNMENTIONED]:
+      "This is not a Remote role. The JD does not mention Remote, On-site, or Hybrid. Still wanna continue?",
+  };
 
-  return `This is not Remote role. This is ${roleType} role. Still wanna continue?`;
+  return (
+    messageByType[workMode?.type] ||
+    "This is not a Remote role. Still wanna continue?"
+  );
 };
