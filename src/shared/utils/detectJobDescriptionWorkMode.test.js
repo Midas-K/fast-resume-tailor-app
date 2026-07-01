@@ -63,4 +63,28 @@ describe("detectJobDescriptionWorkMode", () => {
 
     expect(shouldConfirmNonRemoteCopy(workMode)).toBe(false);
   });
+
+  test("treats fully remote roles as remote when interview mentions onsite visits", () => {
+    const patchMyPcStyleJd = `
+Software Engineer, AI
+United StatesEngineering /Full-Time /Remote
+Our fully remote crew of 150 GIF-loving humans supports over 10,000 customers.
+Candidates for fully remote positions must reside in one of the following U.S. states.
+What to Expect in the Interview Process
+Most interviews are conducted virtually. In some cases we may invite candidates to participate in an in person conversation or onsite visit.
+`;
+
+    const workMode = detectJobDescriptionWorkMode(patchMyPcStyleJd);
+
+    expect(workMode.type).toBe(WORK_LOCATION_TYPES.REMOTE);
+    expect(shouldConfirmNonRemoteCopy(workMode)).toBe(false);
+  });
+
+  test("still detects hybrid when work arrangement requires on-site presence", () => {
+    expect(
+      detectJobDescriptionWorkMode(
+        "Hybrid role with 3 days in-office. Remote and on-site collaboration required."
+      ).type
+    ).toBe(WORK_LOCATION_TYPES.HYBRID);
+  });
 });
