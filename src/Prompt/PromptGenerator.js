@@ -41,7 +41,7 @@ function PromptGenerator({
          const companyName = item.companyName || "";
          const timeline = item.timeline || "";
    
-         return `• ${[title, companyName, timeline]
+         return `- ${[title, companyName, timeline]
            .filter((value) => value && value.trim())
            .join(", ")}`;
        })
@@ -61,7 +61,7 @@ function PromptGenerator({
          const degree = item.degree || "";
          const timeline = item.timeline || "";
    
-         return `• ${[school, degree, timeline]
+         return `- ${[school, degree, timeline]
            .filter((value) => value && value.trim())
            .join(", ")}`;
        })
@@ -201,10 +201,10 @@ ${jobDescription}
 Name: ${profile?.name || ""}
       
 Education:
-      ${formatEducationForPrompt(profile?.education)}
+${formatEducationForPrompt(profile?.education)}
       
 My Work Experience:
-      ${formatExperienceForPrompt(profile?.experience)}
+${formatExperienceForPrompt(profile?.experience)}
       
 Job Description:
 ${jobDescription}
