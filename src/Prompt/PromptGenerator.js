@@ -202,8 +202,9 @@ ${jobDescription}
    
      const buildUploadedPrompt = (profile) => {
           return `
-      ${profile.admin_prompt}
+${profile.admin_prompt}
 
+Job Description:
 ${jobDescription}
 `;
         };
