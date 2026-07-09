@@ -5,8 +5,10 @@ import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
 import { buildResumeFromTemplate, warmBuildResumeApi } from "../shared/api/buildResumeApi";
 import { parseJsonField } from "../shared/utils/format";
 import { parseAndValidateResumePaste } from "../shared/utils/parseResumeSections";
+import { buildResumeSavedMessage } from "../shared/utils/applicationActionMessages";
+import { confirmReapplyIfNeeded } from "../shared/utils/confirmReapplyIfNeeded";
+import { useToast } from "../UI/ToastProvider";
 import {
-  buildResumeSavedMessage,
   canUseFolderPicker,
   changeCustomerRootFolder,
   FOLDER_PICKER_USER_HINT,
@@ -35,7 +37,9 @@ function ResumeBuilderForm({
   appliedCompany,
   selectedProfile,
   compact = false,
+  onResumeSaved = null,
 }) {
+  const { showConfirm } = useToast();
   const [wholeResumePaste, setWholeResumePaste] = useState("");
   const [parseMeta, setParseMeta] = useState({
     foundSections: [],
@@ -493,6 +497,24 @@ CERTIFICATIONS`}
       return;
     }
 
+    const savedCompany =
+      String(appliedCompanyRef.current || appliedCompany || "").trim() ||
+      "Unknown Company";
+    const savedRole =
+      String(appliedRoleRef.current || appliedRole || "").trim() ||
+      "Unknown Role";
+
+    const reapplyDecision = await confirmReapplyIfNeeded({
+      profileId: selectedProfile.id,
+      companyName: savedCompany,
+      roleName: savedRole,
+      showConfirm,
+    });
+
+    if (!reapplyDecision.proceed) {
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -501,8 +523,8 @@ CERTIFICATIONS`}
       const buildPayload = {
         ...(cachedPayload || {
           profileId: selectedProfile.id,
-          roleName: appliedRole.trim(),
-          companyName: appliedCompany.trim(),
+          roleName: savedRole,
+          companyName: savedCompany,
           summary: parsed.summary.trim(),
           skills: parsed.skills.trim(),
           certification: parsed.certification.trim(),
@@ -518,12 +540,14 @@ CERTIFICATIONS`}
         dayStart,
         dayEnd,
         recordApplication: true,
+        allowReapply: reapplyDecision.allowReapply,
       };
       const requestBodyJson = cachedPayload?.bodyJson
         ? JSON.stringify({
             ...JSON.parse(cachedPayload.bodyJson),
             dayStart,
             dayEnd,
+            allowReapply: reapplyDecision.allowReapply,
           })
         : undefined;
 
@@ -550,8 +574,8 @@ CERTIFICATIONS`}
       const saveResultPromise = saveResumeToDevice({
         pdfBlob: blob,
         profileName: selectedProfile?.name || "Profile",
-        companyName: appliedCompany?.trim() || "Unknown Company",
-        roleName: appliedRole?.trim() || "Unknown Role",
+        companyName: savedCompany,
+        roleName: savedRole,
         applicationNumber: sequenceNumber || 1,
         rootDirectoryHandle: folderSelection?.handle || null,
       });
@@ -561,7 +585,18 @@ CERTIFICATIONS`}
 
       const saveResult = await saveResultPromise;
 
-      alert(buildResumeSavedMessage(saveResult));
+      alert(
+        buildResumeSavedMessage(saveResult, {
+          companyName: savedCompany,
+          roleName: savedRole,
+        })
+      );
+
+      onResumeSaved?.({
+        companyName: savedCompany,
+        roleName: savedRole,
+        savedPath: saveResult.savedPath,
+      });
     } catch (error) {
       if (
         error?.name === "AbortError" ||

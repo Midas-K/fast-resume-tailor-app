@@ -1,13 +1,21 @@
 import React, { useEffect, useState } from "react";
 
 import AppShell from "../UI/AppShell";
+import ApplicationActionHistory from "../UI/ApplicationActionHistory";
 import Icon from "../UI/Icon";
 import IconButton from "../UI/IconButton";
 import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
 import { fetchProfileById } from "../Profile/api/profileApi";
 import { buildResumeFromProfile, warmBuildResumeApi } from "../shared/api/buildResumeApi";
+import { buildResumeSavedMessage } from "../shared/utils/applicationActionMessages";
+import { confirmReapplyIfNeeded } from "../shared/utils/confirmReapplyIfNeeded";
+import { useToast } from "../UI/ToastProvider";
 import {
-  buildResumeSavedMessage,
+  APPLICATION_ACTION_TYPES,
+  createApplicationActionEntry,
+  prependApplicationAction,
+} from "../shared/utils/applicationActionHistory";
+import {
   canUseFolderPicker,
   changeCustomerRootFolder,
   FOLDER_PICKER_REQUIRED_MESSAGE,
@@ -31,6 +39,7 @@ function BuildResumeDashboard({
   onLogout,
   onShowProfiles,
 }) {
+  const { showConfirm } = useToast();
   const [roleName, setRoleName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
@@ -39,6 +48,7 @@ function BuildResumeDashboard({
     canUseFolderPicker() || usesStructuredZipFallback()
   );
   const [profile, setProfile] = useState(selectedProfile);
+  const [applicationActions, setApplicationActions] = useState([]);
 
   useEffect(() => {
     setProfile(selectedProfile);
@@ -95,6 +105,10 @@ function BuildResumeDashboard({
     setDescription("");
   };
 
+  const clearJobDescription = () => {
+    setDescription("");
+  };
+
   const handleChangeSaveFolder = async () => {
     if (!canUseFolderPicker()) {
       alert(FOLDER_PICKER_REQUIRED_MESSAGE);
@@ -130,6 +144,9 @@ function BuildResumeDashboard({
       return;
     }
 
+    const savedCompany = companyName.trim();
+    const savedRole = roleName.trim();
+
     const templateLabel = getTemplateLabel(profile);
     const templateNote = profile.resume_template_id
       ? "This is the template your admin assigned to your profile."
@@ -147,18 +164,30 @@ function BuildResumeDashboard({
       return;
     }
 
+    const reapplyDecision = await confirmReapplyIfNeeded({
+      profileId: profile.id,
+      companyName: savedCompany,
+      roleName: savedRole,
+      showConfirm,
+    });
+
+    if (!reapplyDecision.proceed) {
+      return;
+    }
+
     try {
       setLoading(true);
 
       const { dayStart, dayEnd } = getLocalDayBounds();
       const buildPayload = {
         profileId: profile.id,
-        roleName: roleName.trim(),
-        companyName: companyName.trim(),
+        roleName: savedRole,
+        companyName: savedCompany,
         jobDescription: description.trim(),
         dayStart,
         dayEnd,
         recordApplication: true,
+        allowReapply: reapplyDecision.allowReapply,
       };
 
       const folderPromise = canUseFolderPicker()
@@ -189,18 +218,33 @@ function BuildResumeDashboard({
       const saveResult = await saveResumeToDevice({
         pdfBlob: blob,
         profileName: profile.name || "Profile",
-        companyName: companyName.trim(),
-        roleName: roleName.trim(),
+        companyName: savedCompany,
+        roleName: savedRole,
         applicationNumber: sequenceNumber || 1,
         rootDirectoryHandle: folderSelection?.handle || null,
       });
 
-      resetApplicationInputs();
+      clearJobDescription();
 
       alert(
-        `${buildResumeSavedMessage(saveResult)}\n\nTemplate: ${templateNameFromServer || templateLabel}${
+        `${buildResumeSavedMessage(saveResult, {
+          companyName: savedCompany,
+          roleName: savedRole,
+        })}\n\nTemplate: ${templateNameFromServer || templateLabel}${
           usesDefaultTemplate ? " (admin default)" : " (admin assigned)"
         }`
+      );
+
+      setApplicationActions((current) =>
+        prependApplicationAction(
+          current,
+          createApplicationActionEntry({
+            type: APPLICATION_ACTION_TYPES.RESUME_SAVED,
+            companyName: savedCompany,
+            roleName: savedRole,
+            detail: saveResult.savedPath,
+          })
+        )
       );
     } catch (error) {
       if (
@@ -336,6 +380,8 @@ function BuildResumeDashboard({
               onClick={onShowProfiles}
             />
           </div>
+
+          <ApplicationActionHistory items={applicationActions} />
         </section>
 
         <aside className="build-profile-compact-card">

@@ -52,6 +52,13 @@ router.get(
   })
 );
 router.get(
+  "/check-repeat",
+  requireAuth,
+  jsonHandler(applicationService.getExistingApplicationMatch, {
+    logLabel: "Application repeat check",
+  })
+);
+router.get(
   "/daily-sequence",
   requireAuth,
   jsonHandler(applicationService.getDailyApplicationSequence, {

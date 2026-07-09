@@ -538,15 +538,3 @@ export const saveResumeToDevice = async ({
     applicationNumber,
   });
 };
-
-export const buildResumeSavedMessage = (saveResult) => {
-  const savedPath =
-    saveResult?.savedPath ||
-    `${saveResult?.dateFolder}/${saveResult?.companyRoleFolder}/${saveResult?.fileName}`;
-
-  if (saveResult?.saveMode === "zip") {
-    return `Resume saved to Downloads as a zip with the same folder layout as desktop.\n${savedPath}\nUnzip ${saveResult.zipFileName || "the download"} to open it.`;
-  }
-
-  return `Resume saved to your device!\n${savedPath}`;
-};

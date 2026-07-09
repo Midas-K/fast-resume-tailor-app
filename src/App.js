@@ -13,7 +13,12 @@ import ProfileManager from "./Profile/ProfileManager";
 import PromptGenerator from "./Prompt/PromptGenerator";
 import ResumeBuilderForm from "./ResumeForm/ResumeBuilderForm";
 import BuildResumeDashboard from "./BuildResume/BuildResumeDashboard";
-import { warmCustomerRootFolder, canUseFolderPicker } from "./services/fileSystemSaveService";
+import ApplicationActionHistory from "./UI/ApplicationActionHistory";
+import {
+  APPLICATION_ACTION_TYPES,
+  createApplicationActionEntry,
+  prependApplicationAction,
+} from "./shared/utils/applicationActionHistory";
 import { warmBuildResumeApi } from "./shared/api/buildResumeApi";
 
 function App() {
@@ -32,6 +37,7 @@ function App() {
   const [roleName, setRoleName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
+  const [applicationActions, setApplicationActions] = useState([]);
 
   const normalizeUser = (rawUser) => {
     if (!rawUser) return null;
@@ -136,6 +142,37 @@ function App() {
     setRoleName("");
     setCompanyName("");
     setDescription("");
+  };
+
+  const recordApplicationAction = (entry) => {
+    setApplicationActions((current) => prependApplicationAction(current, entry));
+  };
+
+  const handlePromptCopied = ({ companyName: copiedCompany, roleName: copiedRole }) => {
+    recordApplicationAction(
+      createApplicationActionEntry({
+        type: APPLICATION_ACTION_TYPES.PROMPT_COPIED,
+        companyName: copiedCompany,
+        roleName: copiedRole,
+      })
+    );
+  };
+
+  const handleResumeSaved = ({
+    companyName: savedCompany,
+    roleName: savedRole,
+    savedPath = "",
+  }) => {
+    setDescription("");
+
+    recordApplicationAction(
+      createApplicationActionEntry({
+        type: APPLICATION_ACTION_TYPES.RESUME_SAVED,
+        companyName: savedCompany,
+        roleName: savedRole,
+        detail: savedPath,
+      })
+    );
   };
 
   if (!currentUser) {
@@ -243,6 +280,7 @@ function App() {
               roleName={roleName}
               companyName={companyName}
               selectedProfile={selectedProfile}
+              onPromptCopied={handlePromptCopied}
             />
 
             <div className="fast-readiness">
@@ -256,6 +294,8 @@ function App() {
               </span>
             </div>
           </div>
+
+          <ApplicationActionHistory items={applicationActions} />
         </section>
 
         <section className="fast-resume-panel">
@@ -264,6 +304,7 @@ function App() {
             appliedRole={roleName}
             appliedCompany={companyName}
             selectedProfile={selectedProfile}
+            onResumeSaved={handleResumeSaved}
           />
         </section>
       </div>

@@ -835,6 +835,7 @@ async function buildResumeFromTemplate({ user, body }) {
       dayStart,
       dayEnd,
       recordApplication = true,
+      allowReapply = false,
     } = body;
 
     if (!profileId) {
@@ -882,6 +883,7 @@ async function buildResumeFromTemplate({ user, body }) {
           userId: user.id,
           companyName,
           roleName,
+          allowReapply,
         })
       : Promise.resolve();
 
@@ -1016,6 +1018,7 @@ async function buildResumeFromTemplate({ user, body }) {
         profileId,
         companyName,
         roleName,
+        allowReapply,
       }).catch((error) => {
         console.error("Deferred application record error:", error.message);
       });
@@ -1051,6 +1054,7 @@ async function buildResumeFromProfile({ user, body }) {
     dayStart,
     dayEnd,
     recordApplication = true,
+    allowReapply = false,
   } = body;
 
   if (!profileId) {
@@ -1132,6 +1136,7 @@ async function buildResumeFromProfile({ user, body }) {
       dayStart,
       dayEnd,
       recordApplication,
+      allowReapply,
     },
   });
 }

@@ -72,8 +72,28 @@ const createTables = async () => {
       normalized_company_name TEXT NOT NULL,
       normalized_role_name TEXT NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(profile_id, normalized_company_name, normalized_role_name)
+      UNIQUE(profile_id, normalized_company_name)
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE applications
+    DROP CONSTRAINT IF EXISTS applications_profile_id_normalized_company_name_normalized_role_name_key;
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'applications_profile_id_normalized_company_name_key'
+      ) THEN
+        ALTER TABLE applications
+        ADD CONSTRAINT applications_profile_id_normalized_company_name_key
+        UNIQUE (profile_id, normalized_company_name);
+      END IF;
+    END $$;
   `);
 
   await pool.query(`

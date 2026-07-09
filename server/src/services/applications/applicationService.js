@@ -430,7 +430,6 @@ const createApplication = async (req) => {
   }
 
   const normalizedCompany = companyName.trim().toLowerCase();
-  const normalizedRole = roleName.trim().toLowerCase();
 
   const existingApplication = await pool.query(
     `
@@ -438,15 +437,14 @@ const createApplication = async (req) => {
       FROM applications
       WHERE profile_id = $1
       AND normalized_company_name = $2
-      AND normalized_role_name = $3
     `,
-    [profileId, normalizedCompany, normalizedRole]
+    [profileId, normalizedCompany]
   );
 
   if (existingApplication.rows.length > 0) {
     throw new HttpError(
       409,
-      "This profile already applied to this company and role."
+      "This profile already applied to this company."
     );
   }
 
@@ -469,7 +467,7 @@ const createApplication = async (req) => {
       companyName.trim(),
       roleName.trim(),
       normalizedCompany,
-      normalizedRole,
+      roleName.trim().toLowerCase(),
     ]
   );
 
@@ -482,12 +480,90 @@ const createApplication = async (req) => {
   };
 };
 
+const formatApplicationDateLabel = (dateValue) => {
+  const date = new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const year = String(date.getUTCFullYear()).slice(-2);
+
+  return `${month}/${day}/${year}`;
+};
+
+const getExistingApplicationMatch = async (req) => {
+  const { profileId, companyName, roleName } = req.query;
+
+  if (!profileId || !companyName || !roleName) {
+    throw new HttpError(
+      400,
+      "profileId, companyName, and roleName query parameters are required."
+    );
+  }
+
+  const profileCheck = await pool.query(
+    `
+      SELECT id
+      FROM profiles
+      WHERE id = $1 AND user_id = $2
+    `,
+    [profileId, req.user.id]
+  );
+
+  if (profileCheck.rows.length === 0) {
+    throw new HttpError(404, "Selected profile was not found.");
+  }
+
+  const normalizedCompany = String(companyName || "").trim().toLowerCase();
+  const normalizedRole = String(roleName || "").trim().toLowerCase();
+
+  const result = await pool.query(
+    `
+      SELECT id, created_at
+      FROM applications
+      WHERE profile_id = $1
+        AND user_id = $2
+        AND normalized_company_name = $3
+        AND normalized_role_name = $4
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [profileId, req.user.id, normalizedCompany, normalizedRole]
+  );
+
+  const existing = result.rows[0];
+
+  if (!existing) {
+    return {
+      body: {
+        exists: false,
+      },
+    };
+  }
+
+  return {
+    body: {
+      exists: true,
+      appliedAt: existing.created_at,
+      appliedDateLabel: formatApplicationDateLabel(existing.created_at),
+    },
+  };
+};
+
 const assertApplicationIsNew = async ({
   profileId,
   userId,
   companyName,
   roleName,
+  allowReapply = false,
 }) => {
+  if (allowReapply) {
+    return;
+  }
+
   const profileCheck = await pool.query(
     `
       SELECT id
@@ -502,7 +578,6 @@ const assertApplicationIsNew = async ({
   }
 
   const normalizedCompany = String(companyName || "").trim().toLowerCase();
-  const normalizedRole = String(roleName || "").trim().toLowerCase();
 
   const existingApplication = await pool.query(
     `
@@ -510,15 +585,14 @@ const assertApplicationIsNew = async ({
       FROM applications
       WHERE profile_id = $1
         AND normalized_company_name = $2
-        AND normalized_role_name = $3
     `,
-    [profileId, normalizedCompany, normalizedRole]
+    [profileId, normalizedCompany]
   );
 
   if (existingApplication.rows.length > 0) {
     throw new HttpError(
       409,
-      "This profile already applied to this company and role."
+      "This profile already applied to this company."
     );
   }
 };
@@ -549,9 +623,41 @@ const recordApplicationAfterResume = async ({
   profileId,
   companyName,
   roleName,
+  allowReapply = false,
 }) => {
   const normalizedCompany = String(companyName || "").trim().toLowerCase();
   const normalizedRole = String(roleName || "").trim().toLowerCase();
+  const trimmedCompany = String(companyName || "").trim();
+  const trimmedRole = String(roleName || "").trim();
+
+  if (allowReapply) {
+    const updated = await pool.query(
+      `
+        UPDATE applications
+        SET
+          company_name = $3,
+          role_name = $4,
+          created_at = CURRENT_TIMESTAMP
+        WHERE profile_id = $1
+          AND user_id = $2
+          AND normalized_company_name = $5
+          AND normalized_role_name = $6
+        RETURNING id
+      `,
+      [
+        profileId,
+        userId,
+        trimmedCompany,
+        trimmedRole,
+        normalizedCompany,
+        normalizedRole,
+      ]
+    );
+
+    if (updated.rows.length > 0) {
+      return;
+    }
+  }
 
   await pool.query(
     `
@@ -584,6 +690,7 @@ module.exports = {
   getProfileCounts,
   getProfileApplications,
   getDailyApplicationSequence,
+  getExistingApplicationMatch,
   createApplication,
   assertApplicationIsNew,
   getDailySequenceNumber,

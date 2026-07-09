@@ -1898,6 +1898,104 @@ select {
   color: #f97316;
 }
 
+.application-action-history {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.application-action-history__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: #334155;
+  font-size: 12px;
+}
+
+.application-action-history__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.application-action-history__item {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: white;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.application-action-history__item--prompt_copied {
+  border-color: rgba(79, 70, 229, 0.18);
+}
+
+.application-action-history__item--resume_saved {
+  border-color: rgba(22, 163, 74, 0.18);
+}
+
+.application-action-history__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(79, 70, 229, 0.1);
+  color: #4f46e5;
+}
+
+.application-action-history__item--resume_saved .application-action-history__icon {
+  background: rgba(22, 163, 74, 0.1);
+  color: #16a34a;
+}
+
+.application-action-history__label {
+  display: block;
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.application-action-history__copy p {
+  margin: 2px 0 0;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.application-action-history__separator {
+  margin: 0 6px;
+  color: #94a3b8;
+}
+
+.application-action-history__copy small {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.application-action-history__time {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* ---------- Make ResumeBuilderForm compact in right panel ---------- */
 
 .fast-resume-panel .resume-form-header {

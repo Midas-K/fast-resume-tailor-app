@@ -101,3 +101,12 @@ export const formatEstFolderDate = (date = new Date()) => {
 
   return `${month}.${day}`;
 };
+
+export const formatEstDateLabel = (date = new Date()) => {
+  const { month, day, year } = getEstDateParts(date);
+  const monthLabel = String(month).padStart(2, "0");
+  const dayLabel = String(day).padStart(2, "0");
+  const yearLabel = String(year).slice(-2);
+
+  return `${monthLabel}/${dayLabel}/${yearLabel}`;
+};

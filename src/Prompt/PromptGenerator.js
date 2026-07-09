@@ -7,12 +7,15 @@ import {
   detectJobDescriptionWorkMode,
   shouldConfirmNonRemoteCopy,
 } from "../shared/utils/detectJobDescriptionWorkMode";
+import { buildPromptCopiedMessage } from "../shared/utils/applicationActionMessages";
+import { confirmReapplyIfNeeded } from "../shared/utils/confirmReapplyIfNeeded";
 
 function PromptGenerator({
   jobDescription = "",
   roleName = "",
   companyName = "",
   selectedProfile = null,
+  onPromptCopied = null,
 }) {
   const { showConfirm } = useToast();
 
@@ -197,18 +200,9 @@ ${jobDescription}
      const buildUploadedPrompt = (profile) => {
           return `
       ${profile.admin_prompt}
-            
-Name: ${profile?.name || ""}
-      
-Education:
-${formatEducationForPrompt(profile?.education)}
-      
-My Work Experience:
-${formatExperienceForPrompt(profile?.experience)}
-      
-Job Description:
+
 ${jobDescription}
-      `;
+`;
         };
       
         const buildResumePrompt = async () => {
@@ -222,10 +216,13 @@ ${jobDescription}
         };
       
         const copyPrompt = async () => {
+          const copiedCompany = companyName.trim();
+          const copiedRole = roleName.trim();
+
           if (
             !selectedProfile ||
-            !roleName.trim() ||
-            !companyName.trim() ||
+            !copiedRole ||
+            !copiedCompany ||
             !jobDescription.trim()
           ) {
             alert(
@@ -250,6 +247,17 @@ ${jobDescription}
               return;
             }
           }
+
+          const reapplyDecision = await confirmReapplyIfNeeded({
+            profileId: selectedProfile.id,
+            companyName: copiedCompany,
+            roleName: copiedRole,
+            showConfirm,
+          });
+
+          if (!reapplyDecision.proceed) {
+            return;
+          }
       
           try {
             const prompt = await buildResumePrompt();
@@ -265,7 +273,17 @@ ${jobDescription}
               document.body.removeChild(textArea);
             }
       
-            alert("Prompt copied!");
+            alert(
+              buildPromptCopiedMessage({
+                companyName: copiedCompany,
+                roleName: copiedRole,
+              })
+            );
+
+            onPromptCopied?.({
+              companyName: copiedCompany,
+              roleName: copiedRole,
+            });
           } catch (error) {
             alert(error.message);
           }
