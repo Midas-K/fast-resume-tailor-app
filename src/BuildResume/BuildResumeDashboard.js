@@ -6,7 +6,7 @@ import Icon from "../UI/Icon";
 import IconButton from "../UI/IconButton";
 import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
 import { fetchProfileById } from "../Profile/api/profileApi";
-import { buildResumeFromProfile, warmBuildResumeApi } from "../shared/api/buildResumeApi";
+import { buildResumeFromProfile } from "../shared/api/buildResumeApi";
 import { buildResumeSavedMessage } from "../shared/utils/applicationActionMessages";
 import { confirmReapplyIfNeeded } from "../shared/utils/confirmReapplyIfNeeded";
 import { useToast } from "../UI/ToastProvider";
@@ -55,9 +55,15 @@ function BuildResumeDashboard({
   }, [selectedProfile]);
 
   useEffect(() => {
-    warmBuildResumeApi();
-
     if (!canUseFolderPicker()) {
+      return undefined;
+    }
+
+    const cachedSelection = getCachedCustomerRootFolder();
+
+    if (cachedSelection?.handle) {
+      setSaveFolderReady(true);
+      prepareResumeSaveFolder(cachedSelection.handle).catch(() => {});
       return undefined;
     }
 
@@ -79,6 +85,15 @@ function BuildResumeDashboard({
 
   useEffect(() => {
     if (!selectedProfile?.id) {
+      return;
+    }
+
+    if (
+      selectedProfile.experience != null &&
+      selectedProfile.education != null &&
+      selectedProfile.resume_template_name !== undefined
+    ) {
+      setProfile(selectedProfile);
       return;
     }
 

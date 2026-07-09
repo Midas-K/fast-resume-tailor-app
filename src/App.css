@@ -5227,3 +5227,7 @@ select {
     width: 100%;
   }
 }
+
+.app-route-loading {
+  min-height: 100vh;
+}

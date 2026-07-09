@@ -119,6 +119,14 @@ export const getNextFolderSequenceInDateFolder = async (
     return 1;
   }
 
+  const dateFolder = getTodayFolderName();
+  const cachedNext = dateFolderSequenceCache.get(dateFolder);
+
+  if (cachedNext != null) {
+    dateFolderSequenceCache.set(dateFolder, cachedNext + 1);
+    return cachedNext;
+  }
+
   let maxSequence = 0;
 
   try {
@@ -137,7 +145,9 @@ export const getNextFolderSequenceInDateFolder = async (
     return 1;
   }
 
-  return maxSequence + 1;
+  const nextSequence = maxSequence + 1;
+  dateFolderSequenceCache.set(dateFolder, nextSequence + 1);
+  return nextSequence;
 };
 
 const resolveApplicationFolderNumber = async ({
@@ -324,6 +334,8 @@ export const canSaveResumeToDevice = () => true;
 
 let cachedRootFolderSelection = null;
 let cachedDateFolderSelection = null;
+const dateFolderSequenceCache = new Map();
+let warmFolderPromise = null;
 
 export const getCachedCustomerRootFolder = () => cachedRootFolderSelection;
 
@@ -370,10 +382,21 @@ export const warmCustomerRootFolder = async () => {
     return cachedRootFolderSelection;
   }
 
-  const selection = await resolveCustomerRootFolder();
-  cachedRootFolderSelection = selection;
-  prepareResumeSaveFolder(selection.handle).catch(() => {});
-  return selection;
+  if (warmFolderPromise) {
+    return warmFolderPromise;
+  }
+
+  warmFolderPromise = resolveCustomerRootFolder()
+    .then((selection) => {
+      cachedRootFolderSelection = selection;
+      prepareResumeSaveFolder(selection.handle).catch(() => {});
+      return selection;
+    })
+    .finally(() => {
+      warmFolderPromise = null;
+    });
+
+  return warmFolderPromise;
 };
 
 const openDirectoryPicker = async () => {

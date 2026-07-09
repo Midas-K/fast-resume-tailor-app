@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import React, { useEffect, useMemo, useRef, useState, useTransition, memo } from "react";
 import Icon from "../UI/Icon";
 import IconButton from "../UI/IconButton";
 import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
-import { buildResumeFromTemplate, warmBuildResumeApi } from "../shared/api/buildResumeApi";
+import { buildResumeFromTemplate } from "../shared/api/buildResumeApi";
 import { parseJsonField } from "../shared/utils/format";
 import { parseAndValidateResumePaste } from "../shared/utils/parseResumeSections";
 import { buildResumeSavedMessage } from "../shared/utils/applicationActionMessages";
@@ -85,9 +85,15 @@ function ResumeBuilderForm({
   );
 
   useEffect(() => {
-    warmBuildResumeApi();
-
     if (!canUseFolderPicker()) {
+      return undefined;
+    }
+
+    const cachedSelection = getCachedCustomerRootFolder();
+
+    if (cachedSelection?.handle) {
+      setSaveFolderReady(true);
+      prepareResumeSaveFolder(cachedSelection.handle).catch(() => {});
       return undefined;
     }
 
@@ -212,7 +218,7 @@ function ResumeBuilderForm({
         parseIdleRef.current = null;
         applyParsedSnapshot(rawText, profile);
       },
-      { timeout: 50 }
+      { timeout: 250 }
     );
   };
 
@@ -227,6 +233,11 @@ function ResumeBuilderForm({
 
   const handleResumePasteChange = (event) => {
     const nextValue = event.target.value;
+
+    if (nextValue === wholeResumePaste) {
+      return;
+    }
+
     setWholeResumePaste(nextValue);
     scheduleParse(nextValue, selectedProfile);
   };
@@ -768,4 +779,16 @@ CERTIFICATIONS`}
   );
 }
 
-export default ResumeBuilderForm;
+function areResumeBuilderPropsEqual(prev, next) {
+  return (
+    prev.appliedRole === next.appliedRole &&
+    prev.appliedCompany === next.appliedCompany &&
+    prev.compact === next.compact &&
+    prev.selectedProfile?.id === next.selectedProfile?.id &&
+    prev.recentActivity?.companyName === next.recentActivity?.companyName &&
+    prev.recentActivity?.roleName === next.recentActivity?.roleName &&
+    prev.onResumeSaved === next.onResumeSaved
+  );
+}
+
+export default memo(ResumeBuilderForm, areResumeBuilderPropsEqual);

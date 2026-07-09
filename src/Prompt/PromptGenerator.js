@@ -1,7 +1,7 @@
+import { useEffect } from "react";
 import IconButton from "../UI/IconButton";
 import { useToast } from "../UI/ToastProvider";
-import { API_URL, authHeaders } from "../shared/api/client";
-import { cachedJsonGet } from "../shared/api/cache";
+import { fetchProfileById } from "../Profile/api/profileApi";
 import {
   buildNonRemoteConfirmMessage,
   detectJobDescriptionWorkMode,
@@ -9,6 +9,15 @@ import {
 } from "../shared/utils/detectJobDescriptionWorkMode";
 import { buildPromptCopiedMessage } from "../shared/utils/applicationActionMessages";
 import { confirmReapplyIfNeeded } from "../shared/utils/confirmReapplyIfNeeded";
+import { parseJsonField } from "../shared/utils/format";
+
+const hasHydratedProfile = (profile) => {
+  if (!profile?.id) {
+    return false;
+  }
+
+  return profile.education != null && profile.experience != null;
+};
 
 function PromptGenerator({
   jobDescription = "",
@@ -19,17 +28,13 @@ function PromptGenerator({
 }) {
   const { showConfirm } = useToast();
 
-  const parseJsonField = (value) => {
-    if (!value) return [];
-
-    if (Array.isArray(value)) return value;
-
-    try {
-      return JSON.parse(value);
-    } catch (error) {
-      return [];
+  useEffect(() => {
+    if (!selectedProfile?.id || hasHydratedProfile(selectedProfile)) {
+      return;
     }
-  };
+
+    fetchProfileById(selectedProfile.id).catch(() => {});
+  }, [selectedProfile]);
 
   const formatExperienceForPrompt = (experienceValue) => {
      const experienceList = parseJsonField(experienceValue);
@@ -76,13 +81,11 @@ function PromptGenerator({
       throw new Error("Please select a profile first.");
     }
 
-    const result = await cachedJsonGet(
-      `${API_URL}/api/profiles/${selectedProfile.id}`,
-      { headers: authHeaders() },
-      15_000
-    );
+    if (hasHydratedProfile(selectedProfile)) {
+      return selectedProfile;
+    }
 
-    const latestProfile = result.profile;
+    const latestProfile = await fetchProfileById(selectedProfile.id);
 
     if (!latestProfile) {
       throw new Error("Selected profile was not found. Please select profile again.");
@@ -135,7 +138,7 @@ Evidence-Only Resume Rule
      • Every resume bullet must describe a concrete action taken, system built, model developed, or outcome delivered.
      • Abstract self-assessments are prohibited unless demonstrated through tangible work outputs.
 
-Full name: ${selectedProfile?.name || ""}
+Full name: ${profile?.name || ""}
 
 My Work Experience:
 

@@ -2,13 +2,20 @@ import { API_URL, getToken } from "./client";
 import { invalidateCache } from "./cache";
 
 const applicationCountsPrefix = `GET:${API_URL}/api/applications/profile-counts`;
+let apiWarmed = false;
 
 export function warmBuildResumeApi() {
+  if (apiWarmed) {
+    return;
+  }
+
   const token = getToken();
 
   if (!token || !API_URL) {
     return;
   }
+
+  apiWarmed = true;
 
   fetch(`${API_URL}/api/health`, {
     method: "GET",
@@ -16,7 +23,9 @@ export function warmBuildResumeApi() {
       Authorization: `Bearer ${token}`,
     },
     cache: "no-store",
-  }).catch(() => {});
+  }).catch(() => {
+    apiWarmed = false;
+  });
 }
 
 export async function buildResumeFromTemplate(payload, options = {}) {
@@ -47,6 +56,7 @@ export async function buildResumeFromTemplate(payload, options = {}) {
   queueMicrotask(() => {
     invalidateCache(applicationCountsPrefix);
     invalidateCache(`GET:${API_URL}/api/applications/profile/${payload.profileId}`);
+    invalidateCache(`GET:${API_URL}/api/applications/check-repeat`);
   });
 
   return {
@@ -86,6 +96,7 @@ export async function buildResumeFromProfile(payload, options = {}) {
   queueMicrotask(() => {
     invalidateCache(applicationCountsPrefix);
     invalidateCache(`GET:${API_URL}/api/applications/profile/${payload.profileId}`);
+    invalidateCache(`GET:${API_URL}/api/applications/check-repeat`);
   });
 
   return {

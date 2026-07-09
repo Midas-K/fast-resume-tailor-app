@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, Suspense, lazy } from "react";
 import "./App.css";
 
 import { ToastProvider } from "./UI/ToastProvider";
@@ -8,11 +8,8 @@ import IconButton from "./UI/IconButton";
 import { fetchProfileById } from "./Profile/api/profileApi";
 
 import AuthPanel from "./Auth/AuthPanel";
-import AdminDashboard from "./Admin/AdminDashboard";
-import ProfileManager from "./Profile/ProfileManager";
 import PromptGenerator from "./Prompt/PromptGenerator";
 import ResumeBuilderForm from "./ResumeForm/ResumeBuilderForm";
-import BuildResumeDashboard from "./BuildResume/BuildResumeDashboard";
 import RecentActivityStrip from "./UI/RecentActivityStrip";
 import { warmBuildResumeApi } from "./shared/api/buildResumeApi";
 import {
@@ -25,6 +22,14 @@ import {
   saveRecentPromptCopy,
   saveRecentResumeSave,
 } from "./shared/utils/recentActionStorage";
+
+const AdminDashboard = lazy(() => import("./Admin/AdminDashboard"));
+const ProfileManager = lazy(() => import("./Profile/ProfileManager"));
+const BuildResumeDashboard = lazy(() => import("./BuildResume/BuildResumeDashboard"));
+
+function AppLoadingFallback() {
+  return <div className="app-route-loading" aria-hidden="true" />;
+}
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -74,11 +79,16 @@ function App() {
   const jobBidStyle = currentUser?.jobBidStyle || "copy_generate";
 
   useEffect(() => {
-    if (!isUser || !selectedProfile?.id || showProfiles) {
+    if (
+      !isUser ||
+      !selectedProfile?.id ||
+      showProfiles ||
+      jobBidStyle === "build_resume"
+    ) {
       return;
     }
 
-    if (selectedProfile.experience && selectedProfile.education) {
+    if (selectedProfile.experience != null && selectedProfile.education != null) {
       return;
     }
 
@@ -125,7 +135,7 @@ function App() {
     warmCustomerRootFolder().catch(() => {});
 
     return undefined;
-  }, [isUser, showProfiles, jobBidStyle]);
+  }, [isUser, showProfiles]);
 
   const handleLogin = (loggedInUser) => {
     const normalizedUser = normalizeUser(loggedInUser);
@@ -155,63 +165,74 @@ function App() {
     setShowProfiles(false);
   };
 
-  const clearApplicationInputs = () => {
+  const clearApplicationInputs = useCallback(() => {
     setRoleName("");
     setCompanyName("");
     setDescription("");
-  };
+  }, []);
 
-  const handlePromptCopied = ({ companyName: copiedCompany, roleName: copiedRole }) => {
-    const entry = {
-      companyName: copiedCompany,
-      roleName: copiedRole,
-    };
+  const handlePromptCopied = useCallback(
+    ({ companyName: copiedCompany, roleName: copiedRole }) => {
+      const entry = {
+        companyName: copiedCompany,
+        roleName: copiedRole,
+      };
 
-    setRecentPromptCopy(entry);
-    saveRecentPromptCopy(selectedProfile?.id, entry);
-  };
+      setRecentPromptCopy(entry);
+      saveRecentPromptCopy(selectedProfile?.id, entry);
+    },
+    [selectedProfile?.id]
+  );
 
-  const handleResumeSaved = ({
-    companyName: savedCompany,
-    roleName: savedRole,
-  }) => {
-    setDescription("");
+  const handleResumeSaved = useCallback(
+    ({ companyName: savedCompany, roleName: savedRole }) => {
+      setDescription("");
 
-    const entry = {
-      companyName: savedCompany,
-      roleName: savedRole,
-    };
+      const entry = {
+        companyName: savedCompany,
+        roleName: savedRole,
+      };
 
-    setRecentResumeSave(entry);
-    saveRecentResumeSave(selectedProfile?.id, entry);
-  };
+      setRecentResumeSave(entry);
+      saveRecentResumeSave(selectedProfile?.id, entry);
+    },
+    [selectedProfile?.id]
+  );
 
   if (!currentUser) {
     return <AuthPanel onLogin={handleLogin} />;
   }
 
   if (isAdmin) {
-    return <AdminDashboard user={currentUser} onLogout={handleLogout} />;
+    return (
+      <Suspense fallback={<AppLoadingFallback />}>
+        <AdminDashboard user={currentUser} onLogout={handleLogout} />
+      </Suspense>
+    );
   }
 
   if (isUser && (!selectedProfile || showProfiles)) {
     return (
-      <ProfileManager
-        user={currentUser}
-        onLogout={handleLogout}
-        onProfileSelected={handleProfileSelected}
-      />
+      <Suspense fallback={<AppLoadingFallback />}>
+        <ProfileManager
+          user={currentUser}
+          onLogout={handleLogout}
+          onProfileSelected={handleProfileSelected}
+        />
+      </Suspense>
     );
   }
 
   if (isUser && jobBidStyle === "build_resume") {
     return (
-      <BuildResumeDashboard
-        user={currentUser}
-        selectedProfile={selectedProfile}
-        onLogout={handleLogout}
-        onShowProfiles={() => setShowProfiles(true)}
-      />
+      <Suspense fallback={<AppLoadingFallback />}>
+        <BuildResumeDashboard
+          user={currentUser}
+          selectedProfile={selectedProfile}
+          onLogout={handleLogout}
+          onShowProfiles={() => setShowProfiles(true)}
+        />
+      </Suspense>
     );
   }
 

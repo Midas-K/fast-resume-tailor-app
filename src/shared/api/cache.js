@@ -1,4 +1,5 @@
 const cache = new Map();
+const inFlight = new Map();
 const DEFAULT_TTL_MS = 120_000;
 
 export function getCached(key) {
@@ -23,12 +24,19 @@ export function setCached(key, data, ttl = DEFAULT_TTL_MS) {
 export function invalidateCache(prefix = "") {
   if (!prefix) {
     cache.clear();
+    inFlight.clear();
     return;
   }
 
   for (const key of cache.keys()) {
     if (key.startsWith(prefix)) {
       cache.delete(key);
+    }
+  }
+
+  for (const key of inFlight.keys()) {
+    if (key.startsWith(prefix)) {
+      inFlight.delete(key);
     }
   }
 }
@@ -42,13 +50,29 @@ export async function cachedJsonGet(url, options = {}, ttl = DEFAULT_TTL_MS) {
     return cached;
   }
 
-  const response = await fetch(url, options);
-  const data = await response.json();
+  const pending = inFlight.get(cacheKey);
 
-  if (!response.ok) {
-    throw new Error(data.message || "Request failed.");
+  if (pending) {
+    return pending;
   }
 
-  setCached(cacheKey, data, ttl);
-  return data;
+  const request = (async () => {
+    const response = await fetch(url, options);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Request failed.");
+    }
+
+    setCached(cacheKey, data, ttl);
+    return data;
+  })();
+
+  inFlight.set(cacheKey, request);
+
+  try {
+    return await request;
+  } finally {
+    inFlight.delete(cacheKey);
+  }
 }

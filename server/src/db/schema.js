@@ -133,6 +133,16 @@ const createTables = async () => {
   `);
 
   await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_applications_repeat_check
+    ON applications(profile_id, normalized_company_name, normalized_role_name);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_applications_profile_created
+    ON applications(profile_id, created_at DESC);
+  `);
+
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_users_approved_by_admin_id ON users(approved_by_admin_id);
   `);
 
