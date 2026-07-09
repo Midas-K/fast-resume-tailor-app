@@ -13,13 +13,12 @@ import ProfileManager from "./Profile/ProfileManager";
 import PromptGenerator from "./Prompt/PromptGenerator";
 import ResumeBuilderForm from "./ResumeForm/ResumeBuilderForm";
 import BuildResumeDashboard from "./BuildResume/BuildResumeDashboard";
-import ApplicationActionHistory from "./UI/ApplicationActionHistory";
-import {
-  APPLICATION_ACTION_TYPES,
-  createApplicationActionEntry,
-  prependApplicationAction,
-} from "./shared/utils/applicationActionHistory";
+import RecentActionBanner from "./UI/RecentActionBanner";
 import { warmBuildResumeApi } from "./shared/api/buildResumeApi";
+import {
+  canUseFolderPicker,
+  warmCustomerRootFolder,
+} from "./services/fileSystemSaveService";
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -37,7 +36,8 @@ function App() {
   const [roleName, setRoleName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
-  const [applicationActions, setApplicationActions] = useState([]);
+  const [recentPromptCopy, setRecentPromptCopy] = useState(null);
+  const [recentResumeSave, setRecentResumeSave] = useState(null);
 
   const normalizeUser = (rawUser) => {
     if (!rawUser) return null;
@@ -144,35 +144,22 @@ function App() {
     setDescription("");
   };
 
-  const recordApplicationAction = (entry) => {
-    setApplicationActions((current) => prependApplicationAction(current, entry));
-  };
-
   const handlePromptCopied = ({ companyName: copiedCompany, roleName: copiedRole }) => {
-    recordApplicationAction(
-      createApplicationActionEntry({
-        type: APPLICATION_ACTION_TYPES.PROMPT_COPIED,
-        companyName: copiedCompany,
-        roleName: copiedRole,
-      })
-    );
+    setRecentPromptCopy({
+      companyName: copiedCompany,
+      roleName: copiedRole,
+    });
   };
 
   const handleResumeSaved = ({
     companyName: savedCompany,
     roleName: savedRole,
-    savedPath = "",
   }) => {
     setDescription("");
-
-    recordApplicationAction(
-      createApplicationActionEntry({
-        type: APPLICATION_ACTION_TYPES.RESUME_SAVED,
-        companyName: savedCompany,
-        roleName: savedRole,
-        detail: savedPath,
-      })
-    );
+    setRecentResumeSave({
+      companyName: savedCompany,
+      roleName: savedRole,
+    });
   };
 
   if (!currentUser) {
@@ -235,6 +222,12 @@ function App() {
             />
           </div>
 
+          <RecentActionBanner
+            variant="prompt"
+            companyName={recentPromptCopy?.companyName}
+            roleName={recentPromptCopy?.roleName}
+          />
+
           <div className="resume-input-row">
             <div className="resume-input-group">
               <label htmlFor="roleName">
@@ -295,7 +288,6 @@ function App() {
             </div>
           </div>
 
-          <ApplicationActionHistory items={applicationActions} />
         </section>
 
         <section className="fast-resume-panel">
@@ -305,6 +297,7 @@ function App() {
             appliedCompany={companyName}
             selectedProfile={selectedProfile}
             onResumeSaved={handleResumeSaved}
+            recentResumeSave={recentResumeSave}
           />
         </section>
       </div>

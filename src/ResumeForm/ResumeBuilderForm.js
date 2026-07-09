@@ -8,6 +8,7 @@ import { parseAndValidateResumePaste } from "../shared/utils/parseResumeSections
 import { buildResumeSavedMessage } from "../shared/utils/applicationActionMessages";
 import { confirmReapplyIfNeeded } from "../shared/utils/confirmReapplyIfNeeded";
 import { useToast } from "../UI/ToastProvider";
+import RecentActionBanner from "../UI/RecentActionBanner";
 import {
   canUseFolderPicker,
   changeCustomerRootFolder,
@@ -38,6 +39,7 @@ function ResumeBuilderForm({
   selectedProfile,
   compact = false,
   onResumeSaved = null,
+  recentResumeSave = null,
 }) {
   const { showConfirm } = useToast();
   const [wholeResumePaste, setWholeResumePaste] = useState("");
@@ -659,6 +661,12 @@ CERTIFICATIONS`}
           )}
         </div>
       </div>
+
+      <RecentActionBanner
+        variant="resume"
+        companyName={recentResumeSave?.companyName}
+        roleName={recentResumeSave?.roleName}
+      />
 
       {selectedProfile && compact ? (
         <>

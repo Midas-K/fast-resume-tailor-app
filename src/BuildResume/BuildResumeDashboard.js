@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 
 import AppShell from "../UI/AppShell";
-import ApplicationActionHistory from "../UI/ApplicationActionHistory";
+import RecentActionBanner from "../UI/RecentActionBanner";
 import Icon from "../UI/Icon";
 import IconButton from "../UI/IconButton";
 import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
@@ -10,11 +10,6 @@ import { buildResumeFromProfile, warmBuildResumeApi } from "../shared/api/buildR
 import { buildResumeSavedMessage } from "../shared/utils/applicationActionMessages";
 import { confirmReapplyIfNeeded } from "../shared/utils/confirmReapplyIfNeeded";
 import { useToast } from "../UI/ToastProvider";
-import {
-  APPLICATION_ACTION_TYPES,
-  createApplicationActionEntry,
-  prependApplicationAction,
-} from "../shared/utils/applicationActionHistory";
 import {
   canUseFolderPicker,
   changeCustomerRootFolder,
@@ -48,7 +43,7 @@ function BuildResumeDashboard({
     canUseFolderPicker() || usesStructuredZipFallback()
   );
   const [profile, setProfile] = useState(selectedProfile);
-  const [applicationActions, setApplicationActions] = useState([]);
+  const [recentResumeSave, setRecentResumeSave] = useState(null);
 
   useEffect(() => {
     setProfile(selectedProfile);
@@ -235,17 +230,10 @@ function BuildResumeDashboard({
         }`
       );
 
-      setApplicationActions((current) =>
-        prependApplicationAction(
-          current,
-          createApplicationActionEntry({
-            type: APPLICATION_ACTION_TYPES.RESUME_SAVED,
-            companyName: savedCompany,
-            roleName: savedRole,
-            detail: saveResult.savedPath,
-          })
-        )
-      );
+      setRecentResumeSave({
+        companyName: savedCompany,
+        roleName: savedRole,
+      });
     } catch (error) {
       if (
         error?.name === "AbortError" ||
@@ -262,6 +250,7 @@ function BuildResumeDashboard({
 
   return (
     <AppShell
+      compact
       kicker="Build Resume"
       title="Generate resume from profile"
       subtitle="Paste a job description, confirm your admin template, and save the PDF to a folder on your laptop or computer."
@@ -287,6 +276,12 @@ function BuildResumeDashboard({
               disabled={loading}
             />
           </div>
+
+          <RecentActionBanner
+            variant="resume"
+            companyName={recentResumeSave?.companyName}
+            roleName={recentResumeSave?.roleName}
+          />
 
           <div className="resume-input-row">
             <div className="resume-input-group">
@@ -381,7 +376,6 @@ function BuildResumeDashboard({
             />
           </div>
 
-          <ApplicationActionHistory items={applicationActions} />
         </section>
 
         <aside className="build-profile-compact-card">

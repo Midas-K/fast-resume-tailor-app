@@ -1,5 +1,7 @@
 import {
   buildPromptCopiedMessage,
+  buildRecentPromptBannerLabel,
+  buildRecentResumeBannerLabel,
   buildResumeSavedMessage,
   formatApplicationDetails,
 } from "./applicationActionMessages";
@@ -38,5 +40,21 @@ describe("applicationActionMessages", () => {
     ).toBe(
       "Company: Meta\nRole: AI Engineer\n\nResume saved to your device!\n6.8/1. Meta - AI Engineer/Neel_Patel.pdf"
     );
+  });
+
+  test("builds recent banner labels", () => {
+    expect(
+      buildRecentPromptBannerLabel({
+        companyName: "Meta",
+        roleName: "AI Engineer",
+      })
+    ).toBe("Recent copied Prompt: Meta - AI Engineer");
+
+    expect(
+      buildRecentResumeBannerLabel({
+        companyName: "FICO",
+        roleName: "Senior Engineer, AI",
+      })
+    ).toBe("Recent generated Resume: FICO - Senior Engineer, AI");
   });
 });

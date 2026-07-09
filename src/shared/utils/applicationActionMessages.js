@@ -15,6 +15,26 @@ export const buildPromptCopiedMessage = ({
   return `Prompt copied!\n\n${formatApplicationDetails({ companyName, roleName })}`;
 };
 
+export const buildRecentPromptBannerLabel = ({
+  companyName = "",
+  roleName = "",
+} = {}) => {
+  const company = String(companyName || "").trim() || "Unknown Company";
+  const role = String(roleName || "").trim() || "Unknown Role";
+
+  return `Recent copied Prompt: ${company} - ${role}`;
+};
+
+export const buildRecentResumeBannerLabel = ({
+  companyName = "",
+  roleName = "",
+} = {}) => {
+  const company = String(companyName || "").trim() || "Unknown Company";
+  const role = String(roleName || "").trim() || "Unknown Role";
+
+  return `Recent generated Resume: ${company} - ${role}`;
+};
+
 export const buildResumeSavedMessage = (
   saveResult,
   { companyName = "", roleName = "" } = {}

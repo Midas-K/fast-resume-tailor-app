@@ -297,6 +297,9 @@ select {
   width: calc(100% - var(--sidebar-width));
   margin-left: var(--sidebar-width);
   padding: 30px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .app-main--fit {
@@ -333,9 +336,8 @@ select {
 .workspace-header--fit h1 {
   margin: 0;
   font-size: 20px;
-  line-height: 1;
+  line-height: 1.15;
   letter-spacing: -0.04em;
-  white-space: nowrap;
 }
 
 .app-main--fit .workspace-header {
@@ -1898,6 +1900,34 @@ select {
   color: #f97316;
 }
 
+.recent-action-banner {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.recent-action-banner--prompt {
+  background: #fef2f2;
+  border: 2px solid #ef4444;
+  color: #b91c1c;
+}
+
+.recent-action-banner--resume {
+  background: #f0fdf4;
+  border: 2px solid #22c55e;
+  color: #15803d;
+}
+
+.fast-resume-panel .recent-action-banner {
+  margin-top: 0;
+  margin-bottom: 14px;
+  flex-shrink: 0;
+}
+
 .application-action-history {
   margin-top: 10px;
   padding: 10px 12px;
@@ -2061,11 +2091,11 @@ select {
 /* ---------- Build Resume dashboard compact profile card ---------- */
 
 .build-fast-grid {
-  height: calc(100vh - 108px);
   display: grid;
-  grid-template-columns: minmax(520px, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
   gap: 16px;
   align-items: stretch;
+  min-height: 0;
 }
 
 .build-profile-compact-card {
@@ -3800,6 +3830,14 @@ select {
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
   gap: 14px;
   align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.fast-apply-card,
+.fast-resume-panel {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .fast-apply-workspace--fit,
@@ -4310,7 +4348,7 @@ select {
 }
 
 .build-fast-grid {
-  min-height: calc(100vh - 180px);
+  min-height: 0;
 }
 
 .admin-primary-btn.icon-btn {
@@ -4325,9 +4363,68 @@ select {
 }
 
 @media (max-width: 1180px) {
-  .app-main--fit .fast-apply-workspace,
-  .fast-apply-workspace--fit {
-    grid-template-columns: 1fr 1fr;
+  .app-shell--fit,
+  .app-main--fit {
+    height: auto;
+    max-height: none;
+    overflow: auto;
+    min-height: 100vh;
+  }
+
+  .fast-apply-workspace,
+  .fast-apply-workspace--fit,
+  .app-main--fit .fast-apply-workspace {
+    grid-template-columns: 1fr;
+    overflow: visible;
+    min-height: auto;
+    flex: none;
+  }
+
+  .app-main--fit .fast-apply-card,
+  .app-main--fit .fast-resume-panel,
+  .fast-apply-workspace--fit .fast-apply-card,
+  .fast-apply-workspace--fit .fast-resume-panel {
+    height: auto;
+    overflow: visible !important;
+  }
+
+  .app-main--fit .resume-input-group--grow,
+  .app-main--fit .fast-jd-textarea {
+    flex: none;
+    min-height: 160px;
+  }
+
+  .resume-form-compact,
+  .app-main--fit .fast-resume-panel .resume-form-card {
+    height: auto;
+    overflow: visible;
+  }
+
+  .resume-form-compact__split {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .resume-form-compact__profile {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding-right: 0;
+    padding-bottom: 10px;
+    max-height: 280px;
+  }
+
+  .resume-form-compact__editor {
+    min-height: 300px;
+  }
+
+  .fast-actions-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fast-readiness {
+    margin-left: 0;
+    width: 100%;
   }
 }
 
@@ -4936,9 +5033,103 @@ select {
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 920px) {
+  .app-main {
+    padding: 64px 12px 16px;
+  }
+
   .app-main--fit {
-    padding: 54px 8px 10px;
+    padding: 56px 10px 12px;
+  }
+
+  .workspace-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .workspace-header h1 {
+    font-size: clamp(22px, 6vw, 32px);
+    line-height: 1.1;
+  }
+
+  .workspace-header p {
+    font-size: 13px;
+    margin-top: 8px;
+  }
+
+  .workspace-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .build-fast-grid {
+    gap: 12px;
+  }
+
+  .build-profile-compact-card {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .recent-action-banner {
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+
+  .fast-apply-card,
+  .fast-resume-panel .resume-form-card,
+  .build-profile-compact-card {
+    border-radius: 16px;
+  }
+}
+
+@media (max-width: 720px) {
+  .resume-input-row,
+  .fast-page .resume-input-row,
+  .build-fast-page .resume-input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .fast-section-title {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .resume-form-footer--solo {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .resume-form-footer--solo .resume-save-folder-note {
+    width: 100%;
+  }
+
+  .resume-form-footer--solo .icon-btn--lg {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .resume-meta-strip {
+    flex-wrap: wrap;
+  }
+
+  .resume-meta-strip span {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .build-template-confirm-note {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-main,
+  .app-main--fit {
+    padding: 52px 8px 10px;
   }
 
   .fast-apply-card,
