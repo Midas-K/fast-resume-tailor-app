@@ -11,6 +11,10 @@ import { buildResumeSavedMessage } from "../shared/utils/applicationActionMessag
 import { confirmReapplyIfNeeded } from "../shared/utils/confirmReapplyIfNeeded";
 import { useToast } from "../UI/ToastProvider";
 import {
+  loadRecentResumeSave,
+  saveRecentResumeSave,
+} from "../shared/utils/recentActionStorage";
+import {
   canUseFolderPicker,
   changeCustomerRootFolder,
   FOLDER_PICKER_REQUIRED_MESSAGE,
@@ -47,6 +51,7 @@ function BuildResumeDashboard({
 
   useEffect(() => {
     setProfile(selectedProfile);
+    setRecentResumeSave(loadRecentResumeSave(selectedProfile?.id));
   }, [selectedProfile]);
 
   useEffect(() => {
@@ -231,6 +236,10 @@ function BuildResumeDashboard({
       );
 
       setRecentResumeSave({
+        companyName: savedCompany,
+        roleName: savedRole,
+      });
+      saveRecentResumeSave(profile?.id, {
         companyName: savedCompany,
         roleName: savedRole,
       });

@@ -19,6 +19,12 @@ import {
   canUseFolderPicker,
   warmCustomerRootFolder,
 } from "./services/fileSystemSaveService";
+import {
+  loadRecentPromptCopy,
+  loadRecentResumeSave,
+  saveRecentPromptCopy,
+  saveRecentResumeSave,
+} from "./shared/utils/recentActionStorage";
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -95,6 +101,17 @@ function App() {
   }, [isUser, selectedProfile?.id, showProfiles, jobBidStyle]);
 
   useEffect(() => {
+    if (!selectedProfile?.id) {
+      setRecentPromptCopy(null);
+      setRecentResumeSave(null);
+      return;
+    }
+
+    setRecentPromptCopy(loadRecentPromptCopy(selectedProfile.id));
+    setRecentResumeSave(loadRecentResumeSave(selectedProfile.id));
+  }, [selectedProfile?.id]);
+
+  useEffect(() => {
     if (!isUser || showProfiles) {
       return undefined;
     }
@@ -145,10 +162,13 @@ function App() {
   };
 
   const handlePromptCopied = ({ companyName: copiedCompany, roleName: copiedRole }) => {
-    setRecentPromptCopy({
+    const entry = {
       companyName: copiedCompany,
       roleName: copiedRole,
-    });
+    };
+
+    setRecentPromptCopy(entry);
+    saveRecentPromptCopy(selectedProfile?.id, entry);
   };
 
   const handleResumeSaved = ({
@@ -156,10 +176,14 @@ function App() {
     roleName: savedRole,
   }) => {
     setDescription("");
-    setRecentResumeSave({
+
+    const entry = {
       companyName: savedCompany,
       roleName: savedRole,
-    });
+    };
+
+    setRecentResumeSave(entry);
+    saveRecentResumeSave(selectedProfile?.id, entry);
   };
 
   if (!currentUser) {
@@ -291,13 +315,18 @@ function App() {
         </section>
 
         <section className="fast-resume-panel">
+          <RecentActionBanner
+            variant="resume"
+            companyName={recentResumeSave?.companyName}
+            roleName={recentResumeSave?.roleName}
+          />
+
           <ResumeBuilderForm
             compact
             appliedRole={roleName}
             appliedCompany={companyName}
             selectedProfile={selectedProfile}
             onResumeSaved={handleResumeSaved}
-            recentResumeSave={recentResumeSave}
           />
         </section>
       </div>

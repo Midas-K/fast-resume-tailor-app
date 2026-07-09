@@ -273,17 +273,17 @@ ${jobDescription}
               document.body.removeChild(textArea);
             }
       
+            onPromptCopied?.({
+              companyName: copiedCompany,
+              roleName: copiedRole,
+            });
+
             alert(
               buildPromptCopiedMessage({
                 companyName: copiedCompany,
                 roleName: copiedRole,
               })
             );
-
-            onPromptCopied?.({
-              companyName: copiedCompany,
-              roleName: copiedRole,
-            });
           } catch (error) {
             alert(error.message);
           }
