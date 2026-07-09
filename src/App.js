@@ -13,7 +13,7 @@ import ProfileManager from "./Profile/ProfileManager";
 import PromptGenerator from "./Prompt/PromptGenerator";
 import ResumeBuilderForm from "./ResumeForm/ResumeBuilderForm";
 import BuildResumeDashboard from "./BuildResume/BuildResumeDashboard";
-import RecentActionBanner from "./UI/RecentActionBanner";
+import RecentActivityStrip from "./UI/RecentActivityStrip";
 import { warmBuildResumeApi } from "./shared/api/buildResumeApi";
 import {
   canUseFolderPicker,
@@ -246,7 +246,7 @@ function App() {
             />
           </div>
 
-          <RecentActionBanner
+          <RecentActivityStrip
             variant="prompt"
             companyName={recentPromptCopy?.companyName}
             roleName={recentPromptCopy?.roleName}
@@ -315,18 +315,13 @@ function App() {
         </section>
 
         <section className="fast-resume-panel">
-          <RecentActionBanner
-            variant="resume"
-            companyName={recentResumeSave?.companyName}
-            roleName={recentResumeSave?.roleName}
-          />
-
           <ResumeBuilderForm
             compact
             appliedRole={roleName}
             appliedCompany={companyName}
             selectedProfile={selectedProfile}
             onResumeSaved={handleResumeSaved}
+            recentActivity={recentResumeSave}
           />
         </section>
       </div>

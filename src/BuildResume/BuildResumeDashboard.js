@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 
 import AppShell from "../UI/AppShell";
-import RecentActionBanner from "../UI/RecentActionBanner";
+import RecentActivityStrip from "../UI/RecentActivityStrip";
 import Icon from "../UI/Icon";
 import IconButton from "../UI/IconButton";
 import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
@@ -286,7 +286,7 @@ function BuildResumeDashboard({
             />
           </div>
 
-          <RecentActionBanner
+          <RecentActivityStrip
             variant="resume"
             companyName={recentResumeSave?.companyName}
             roleName={recentResumeSave?.roleName}
