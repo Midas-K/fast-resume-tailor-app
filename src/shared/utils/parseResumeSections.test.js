@@ -1,6 +1,8 @@
 import {
   applyParsedResumeToForm,
   detectSectionType,
+  hasPastedCertificationsSection,
+  hasPastedEducationSection,
   normalizeCertificationsContent,
   normalizeExperienceBodyToLines,
   normalizeSkillsContent,
@@ -910,5 +912,107 @@ Built GenAI systems.
 
     expect(validation.isValid).toBe(false);
     expect(validation.mismatches.join(" ")).toMatch(/company must match profile exactly/i);
+  });
+
+  test("allows pasted resume without education when profile has education", () => {
+    const profile = {
+      experience: [
+        {
+          companyName: "Meta",
+          title: "Staff Engineer",
+          timeline: "Oct 2023 - Present",
+        },
+      ],
+      education: [
+        {
+          school: "Stanford University",
+          degree: "Bachelor of Science in Computer Science",
+          timeline: "Jan 2010 - Dec 2014",
+        },
+      ],
+    };
+
+    const validation = validatePastedResumeAgainstProfile({
+      rawText: `
+PROFESSIONAL SUMMARY
+Staff AI engineer.
+
+SKILLS
+Python
+
+WORK EXPERIENCE
+Meta | Staff Engineer | Oct 2023 - Present
+
+Built systems.
+`,
+      profile,
+    });
+
+    expect(validation.isValid).toBe(true);
+    expect(validation.mismatches).toHaveLength(0);
+  });
+
+  test("validates education only when education section is pasted", () => {
+    const profile = {
+      experience: [
+        {
+          companyName: "Meta",
+          title: "Staff Engineer",
+          timeline: "Oct 2023 - Present",
+        },
+      ],
+      education: [
+        {
+          school: "Stanford University",
+          degree: "Bachelor of Science in Computer Science",
+          timeline: "Jan 2010 - Dec 2014",
+        },
+      ],
+    };
+
+    const validation = validatePastedResumeAgainstProfile({
+      rawText: `
+PROFESSIONAL SUMMARY
+Staff AI engineer.
+
+SKILLS
+Python
+
+EDUCATION
+MIT | Bachelor of Science in Computer Science | Jan 2010 - Dec 2014
+
+WORK EXPERIENCE
+Meta | Staff Engineer | Oct 2023 - Present
+
+Built systems.
+`,
+      profile,
+    });
+
+    expect(validation.isValid).toBe(false);
+    expect(validation.mismatches.join(" ")).toMatch(/school must match profile exactly/i);
+  });
+
+  test("does not require certifications section in pasted resume", () => {
+    const parsed = parseResumeSections(
+      `
+PROFESSIONAL SUMMARY
+Staff AI engineer.
+
+SKILLS
+Python
+
+WORK EXPERIENCE
+Meta | Staff Engineer | Oct 2023 - Present
+
+Built systems.
+`,
+      [{ companyName: "Meta" }]
+    );
+
+    expect(parsed.foundSections).not.toContain("certifications");
+    expect(parsed.warnings.join(" ")).not.toMatch(/certifications section/i);
+    expect(hasPastedCertificationsSection(parsed)).toBe(false);
+    expect(hasPastedEducationSection(parsed)).toBe(false);
   });
 });

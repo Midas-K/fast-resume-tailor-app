@@ -1787,6 +1787,11 @@ export const parseResumeSections = (
 
     if (currentType === "education") {
       capturedEducation = content;
+
+      if (content.trim()) {
+        foundSections.push("education");
+      }
+
       return;
     }
 
@@ -1892,7 +1897,7 @@ export const parseResumeSections = (
     profileEducation
   );
 
-  const requiredSections = ["summary", "skills", "experience", "certifications"];
+  const requiredSections = ["summary", "skills", "experience"];
 
   requiredSections.forEach((sectionName) => {
     if (!result.foundSections.includes(sectionName)) {
@@ -1901,6 +1906,13 @@ export const parseResumeSections = (
       );
     }
   });
+
+  if (
+    result.foundSections.includes("certifications") &&
+    !String(result.certifications || "").trim()
+  ) {
+    warnings.push("Certifications section was found but has no content.");
+  }
 
   if (result.experience) {
     result.experienceByCompany = splitExperienceByCompanies(
@@ -2004,6 +2016,13 @@ const addMismatch = (mismatches, message) => {
   }
 };
 
+export const hasPastedEducationSection = (parsed = {}) =>
+  Boolean(String(parsed?.education || "").trim());
+
+export const hasPastedCertificationsSection = (parsed = {}) =>
+  (parsed?.foundSections || []).includes("certifications") ||
+  Boolean(String(parsed?.certifications || "").trim());
+
 export const validateParsedResumeAgainstProfile = ({
   parsed = null,
   profile = null,
@@ -2016,18 +2035,12 @@ export const validateParsedResumeAgainstProfile = ({
     profileExperience
   );
   const pastedEducation = parsed?.educationEntries || [];
+  const shouldValidateEducation = hasPastedEducationSection(parsed);
 
   if (profileExperience.length === 0) {
     addMismatch(
       mismatches,
       "Selected profile has no experience entries to verify against."
-    );
-  }
-
-  if (profileEducation.length > 0 && !String(parsed?.education || "").trim()) {
-    addMismatch(
-      mismatches,
-      "Education section is missing in pasted resume content."
     );
   }
 
@@ -2090,59 +2103,61 @@ export const validateParsedResumeAgainstProfile = ({
     }
   }
 
-  if (profileEducation.length !== pastedEducation.length) {
-    addMismatch(
-      mismatches,
-      `Education count must match profile exactly (${profileEducation.length} in profile, ${pastedEducation.length} in pasted resume).`
-    );
-  }
-
-  const educationCount = Math.max(profileEducation.length, pastedEducation.length);
-
-  for (let index = 0; index < educationCount; index += 1) {
-    const profileEntry = profileEducation[index];
-    const pastedEntry = pastedEducation[index];
-    const label = `Education ${index + 1}`;
-
-    if (!profileEntry && pastedEntry) {
+  if (shouldValidateEducation) {
+    if (profileEducation.length !== pastedEducation.length) {
       addMismatch(
         mismatches,
-        `${label}: pasted resume has extra education for "${pastedEntry.school}".`
-      );
-      continue;
-    }
-
-    if (profileEntry && !pastedEntry) {
-      addMismatch(
-        mismatches,
-        `${label}: missing pasted education for profile school "${profileEntry.school}".`
-      );
-      continue;
-    }
-
-    if (!profileEntry || !pastedEntry) {
-      continue;
-    }
-
-    if (!compareTextsExactly(profileEntry.school, pastedEntry.school)) {
-      addMismatch(
-        mismatches,
-        `${label} school must match profile exactly ("${profileEntry.school}" vs "${pastedEntry.school}").`
+        `Education count must match profile exactly (${profileEducation.length} in profile, ${pastedEducation.length} in pasted resume).`
       );
     }
 
-    if (!compareDegreesExactly(profileEntry.degree, pastedEntry.degree)) {
-      addMismatch(
-        mismatches,
-        `${label} degree must match profile exactly ("${profileEntry.degree}" vs "${pastedEntry.degree}").`
-      );
-    }
+    const educationCount = Math.max(profileEducation.length, pastedEducation.length);
 
-    if (!compareTimelinesExactly(profileEntry.timeline, pastedEntry.timeline)) {
-      addMismatch(
-        mismatches,
-        `${label} duration must match profile exactly ("${profileEntry.timeline}" vs "${pastedEntry.timeline}").`
-      );
+    for (let index = 0; index < educationCount; index += 1) {
+      const profileEntry = profileEducation[index];
+      const pastedEntry = pastedEducation[index];
+      const label = `Education ${index + 1}`;
+
+      if (!profileEntry && pastedEntry) {
+        addMismatch(
+          mismatches,
+          `${label}: pasted resume has extra education for "${pastedEntry.school}".`
+        );
+        continue;
+      }
+
+      if (profileEntry && !pastedEntry) {
+        addMismatch(
+          mismatches,
+          `${label}: missing pasted education for profile school "${profileEntry.school}".`
+        );
+        continue;
+      }
+
+      if (!profileEntry || !pastedEntry) {
+        continue;
+      }
+
+      if (!compareTextsExactly(profileEntry.school, pastedEntry.school)) {
+        addMismatch(
+          mismatches,
+          `${label} school must match profile exactly ("${profileEntry.school}" vs "${pastedEntry.school}").`
+        );
+      }
+
+      if (!compareDegreesExactly(profileEntry.degree, pastedEntry.degree)) {
+        addMismatch(
+          mismatches,
+          `${label} degree must match profile exactly ("${profileEntry.degree}" vs "${pastedEntry.degree}").`
+        );
+      }
+
+      if (!compareTimelinesExactly(profileEntry.timeline, pastedEntry.timeline)) {
+        addMismatch(
+          mismatches,
+          `${label} duration must match profile exactly ("${profileEntry.timeline}" vs "${pastedEntry.timeline}").`
+        );
+      }
     }
   }
 

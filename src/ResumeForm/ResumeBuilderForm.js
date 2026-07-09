@@ -4,7 +4,7 @@ import IconButton from "../UI/IconButton";
 import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
 import { buildResumeFromTemplate } from "../shared/api/buildResumeApi";
 import { parseJsonField } from "../shared/utils/format";
-import { parseAndValidateResumePaste } from "../shared/utils/parseResumeSections";
+import { parseAndValidateResumePaste, hasPastedCertificationsSection } from "../shared/utils/parseResumeSections";
 import { buildResumeSavedMessage } from "../shared/utils/applicationActionMessages";
 import { confirmReapplyIfNeeded } from "../shared/utils/confirmReapplyIfNeeded";
 import { useToast } from "../UI/ToastProvider";
@@ -307,7 +307,7 @@ function ResumeBuilderForm({
 
     if (!wholeResumePaste.trim()) {
       alert(
-        "Paste the full resume content with section headings (Summary, Skills, Experience, Certifications)."
+        "Paste the full resume content with section headings (Summary, Skills, Experience)."
       );
       return null;
     }
@@ -348,14 +348,19 @@ function ResumeBuilderForm({
       return null;
     }
 
-    if (!parsed.certification.trim()) {
-      alert("Certifications are required.");
+    const parsedHasCertifications = hasPastedCertificationsSection({
+      foundSections: parsed.parseMeta?.foundSections || [],
+      certifications: parsed.certification,
+    });
+
+    if (parsedHasCertifications && !parsed.certification.trim()) {
+      alert("Certifications section was found but has no content.");
       return null;
     }
 
     if (!parsed.profileMatch.isValid) {
       alert(
-        `Profile safety check failed. Experience and education must match your profile exactly before saving.\n\n${parsed.profileMatch.mismatches
+        `Profile safety check failed. Pasted experience must match your profile, and pasted education must match when an education section is included.\n\n${parsed.profileMatch.mismatches
           .map((item) => `- ${item}`)
           .join("\n")}`
       );
@@ -388,8 +393,10 @@ function ResumeBuilderForm({
           details, and certifications, paste plain sentences as you get them
           from AI — with or without blank lines between lines. Each non-empty
           line becomes one Word bullet in the saved PDF. Summary stays as
-          normal paragraphs. Education and experience company/title/duration
-          must match your profile exactly before saving.
+          normal paragraphs. Experience company/title/duration must match your
+          profile. Education and certifications are optional in the paste — if
+          you include them, education must match your profile. The saved PDF
+          always uses education from your profile.
         </p>
       );
     }

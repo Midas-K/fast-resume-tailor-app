@@ -18,6 +18,10 @@ const {
   applyBoldToRPr,
 } = require("./templateStyles");
 const { repairSplitPlaceholdersInZip } = require("./docxPlaceholderRepair");
+const {
+  findCertificationsPlaceholderParagraphIndex,
+  removeCertificationsSectionFromDocumentXml,
+} = require("./removeCertificationsSection");
 const { runLibreOfficeConvert } = require("./libreOfficeConvert");
 
 const DOCX_MIME_TYPE =
@@ -783,11 +787,28 @@ ${bulletDefinition}
   }
 };
 
-const createDocxBuffer = ({ templateBuffer, data, bulletConfig = {} }) => {
+const createDocxBuffer = ({
+  templateBuffer,
+  data,
+  bulletConfig = {},
+  omitCertificationsSection = false,
+}) => {
   const zip = new PizZip(templateBuffer);
 
   repairSplitPlaceholdersInZip(zip);
   ensureBulletNumberingXml(zip, bulletConfig);
+
+  let certificationsPlaceholderIndex = -1;
+
+  if (omitCertificationsSection) {
+    const documentFile = zip.file("word/document.xml");
+
+    if (documentFile) {
+      certificationsPlaceholderIndex = findCertificationsPlaceholderParagraphIndex(
+        documentFile.asText()
+      );
+    }
+  }
 
   const doc = new Docxtemplater(zip, {
     paragraphLoop: true,
@@ -800,7 +821,21 @@ const createDocxBuffer = ({ templateBuffer, data, bulletConfig = {} }) => {
 
   doc.render(data);
 
-  return doc.getZip().generate({
+  const outputZip = doc.getZip();
+
+  if (omitCertificationsSection) {
+    const documentFile = outputZip.file("word/document.xml");
+
+    if (documentFile) {
+      const repairedXml = removeCertificationsSectionFromDocumentXml(
+        documentFile.asText(),
+        { certificationsPlaceholderIndex }
+      );
+      outputZip.file("word/document.xml", repairedXml);
+    }
+  }
+
+  return outputZip.generate({
     type: "nodebuffer",
     compression: "DEFLATE",
   });
@@ -931,6 +966,8 @@ async function buildResumeFromTemplate({ user, body }) {
     }
 
     const finalCertifications = certification || certifications || "";
+    const includeCertifications =
+      splitBulletLines(finalCertifications).length > 0;
 
     const { templateStyles, bulletConfig } = getTemplatePrep(
       template.id,
@@ -996,6 +1033,7 @@ async function buildResumeFromTemplate({ user, body }) {
       templateBuffer: template.file_data,
       data,
       bulletConfig,
+      omitCertificationsSection: !includeCertifications,
     });
 
     const safeProfileName = sanitizeFileName(profile.name, "profile");
@@ -1165,6 +1203,8 @@ const buildDocxFromTemplateBuffer = ({
     profile.location || ""
   );
   const finalCertifications = certification || "";
+  const includeCertifications =
+    splitBulletLines(finalCertifications).length > 0;
 
   const data = {
     FULL_NAME: profile.name || "",
@@ -1211,6 +1251,7 @@ const buildDocxFromTemplateBuffer = ({
     templateBuffer,
     data,
     bulletConfig,
+    omitCertificationsSection: !includeCertifications,
   });
 };
 
