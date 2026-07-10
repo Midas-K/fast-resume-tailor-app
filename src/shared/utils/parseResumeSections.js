@@ -1566,6 +1566,25 @@ const getProfileCompanyName = (company) => {
   return String(company?.companyName || "").trim();
 };
 
+const getProfileTitle = (entry = {}) => {
+  if (typeof entry === "string") {
+    return "";
+  }
+
+  return String(entry?.title || "").trim();
+};
+
+const normalizeProfileExperienceEntries = (companies = []) => {
+  return (companies || []).map((entry) =>
+    typeof entry === "string"
+      ? { companyName: entry, title: "" }
+      : {
+          companyName: entry?.companyName || "",
+          title: entry?.title || "",
+        }
+  );
+};
+
 export const fuzzyCompanyMatch = (left = "", right = "") => {
   const a = String(left).trim().toLowerCase();
   const b = String(right).trim().toLowerCase();
@@ -1584,26 +1603,51 @@ export const fuzzyCompanyMatch = (left = "", right = "") => {
   return aWord.length > 2 && aWord === bWord;
 };
 
+const findJobBlockIndexForProfile = ({
+  jobBlocks = [],
+  profileEntry = {},
+  profileIndex = 0,
+  usedBlockIndexes = new Set(),
+}) => {
+  const profileTitle = getProfileTitle(profileEntry);
+
+  if (profileTitle) {
+    const titleMatchIndex = jobBlocks.findIndex(
+      (block, blockIndex) =>
+        !usedBlockIndexes.has(blockIndex) &&
+        compareTextsExactly(block.title || "", profileTitle)
+    );
+
+    if (titleMatchIndex !== -1) {
+      return titleMatchIndex;
+    }
+  }
+
+  if (
+    profileIndex < jobBlocks.length &&
+    !usedBlockIndexes.has(profileIndex)
+  ) {
+    return profileIndex;
+  }
+
+  return -1;
+};
+
 const alignJobBlocksToProfile = (jobBlocks = [], profileExperience = []) => {
-  if (!profileExperience.length || jobBlocks.length <= profileExperience.length) {
+  if (!profileExperience.length || !jobBlocks.length) {
     return jobBlocks;
   }
 
   const matched = [];
   const usedBlockIndexes = new Set();
 
-  profileExperience.forEach((profileEntry) => {
-    const profileName = getProfileCompanyName(profileEntry);
-
-    if (!profileName) {
-      return;
-    }
-
-    const matchedIndex = jobBlocks.findIndex(
-      (block, blockIndex) =>
-        !usedBlockIndexes.has(blockIndex) &&
-        fuzzyCompanyMatch(block.company, profileName)
-    );
+  profileExperience.forEach((profileEntry, profileIndex) => {
+    const matchedIndex = findJobBlockIndexForProfile({
+      jobBlocks,
+      profileEntry,
+      profileIndex,
+      usedBlockIndexes,
+    });
 
     if (matchedIndex === -1) {
       return;
@@ -1617,31 +1661,44 @@ const alignJobBlocksToProfile = (jobBlocks = [], profileExperience = []) => {
     return matched;
   }
 
-  const strongBlocks = jobBlocks.filter((block) => block.company && block.timeline);
+  if (jobBlocks.length === profileExperience.length) {
+    return jobBlocks;
+  }
 
-  if (strongBlocks.length === profileExperience.length) {
-    return strongBlocks;
+  const titledBlocks = jobBlocks.filter((block) =>
+    String(block.title || "").trim()
+  );
+
+  if (titledBlocks.length === profileExperience.length) {
+    return titledBlocks;
   }
 
   return jobBlocks;
 };
 
-const mapJobBlocksToProfileCompanies = (jobBlocks = [], profileCompanyNames = []) => {
+const mapJobBlocksToProfileCompanies = (
+  jobBlocks = [],
+  profileExperience = []
+) => {
   const result = {};
   const usedBlockIndexes = new Set();
+  const profileEntries = normalizeProfileExperienceEntries(profileExperience);
 
-  profileCompanyNames.forEach((profileName, profileIndex) => {
-    let matchedIndex = jobBlocks.findIndex(
-      (block, blockIndex) =>
-        !usedBlockIndexes.has(blockIndex) &&
-        fuzzyCompanyMatch(block.company, profileName)
-    );
+  profileEntries.forEach((profileEntry, profileIndex) => {
+    const profileName = getProfileCompanyName(profileEntry);
 
-    if (matchedIndex === -1 && profileIndex < jobBlocks.length) {
-      matchedIndex = profileIndex;
+    if (!profileName) {
+      return;
     }
 
-    if (matchedIndex === -1 || usedBlockIndexes.has(matchedIndex)) {
+    const matchedIndex = findJobBlockIndexForProfile({
+      jobBlocks,
+      profileEntry,
+      profileIndex,
+      usedBlockIndexes,
+    });
+
+    if (matchedIndex === -1) {
       return;
     }
 
@@ -1653,17 +1710,20 @@ const mapJobBlocksToProfileCompanies = (jobBlocks = [], profileCompanyNames = []
 };
 
 export const splitExperienceByCompanies = (experienceText = "", companies = []) => {
-  const companyNames = companies.map(getProfileCompanyName).filter(Boolean);
+  const profileEntries = normalizeProfileExperienceEntries(companies);
+  const companyNames = profileEntries
+    .map((entry) => entry.companyName)
+    .filter(Boolean);
   const text = String(experienceText || "").trim();
 
   if (!text || companyNames.length === 0) {
     return {};
   }
 
-  const jobBlocks = splitExperienceIntoJobBlocks(text, companyNames);
+  const jobBlocks = splitExperienceIntoJobBlocks(text, profileEntries);
 
   if (jobBlocks.length > 0) {
-    const mapped = mapJobBlocksToProfileCompanies(jobBlocks, companyNames);
+    const mapped = mapJobBlocksToProfileCompanies(jobBlocks, profileEntries);
 
     if (Object.keys(mapped).length > 0) {
       return mapped;
@@ -1715,7 +1775,7 @@ export const splitExperienceByCompanies = (experienceText = "", companies = []) 
 
   if (uniqueMarkers.length === 0) {
     if (jobBlocks.length > 0) {
-      return mapJobBlocksToProfileCompanies(jobBlocks, companyNames);
+      return mapJobBlocksToProfileCompanies(jobBlocks, profileEntries);
     }
 
     return {
@@ -1950,32 +2010,63 @@ export const applyParsedResumeToForm = ({
   currentExperienceInputs = [],
 }) => {
   const experienceByCompany = parsed.experienceByCompany || {};
-  const companyList =
+  const profileEntries = normalizeProfileExperienceEntries(
     profileCompanies.length > 0
       ? profileCompanies
-      : currentExperienceInputs.map((item) => ({
-          companyName: item.companyName,
-        }));
+      : currentExperienceInputs
+  );
+  const jobBlocks = alignJobBlocksToProfile(
+    splitExperienceIntoJobBlocks(parsed.experience || "", profileEntries),
+    profileEntries
+  );
 
-  const nextExperienceInputs = currentExperienceInputs.map((item) => ({
-    ...item,
-    details: matchCompanyDetails(experienceByCompany, item.companyName),
-  }));
+  const nextExperienceInputs = currentExperienceInputs.map((item, index) => {
+    const profileName = item.companyName || "";
+    const profileTitle = item.title || "";
+    let details = matchCompanyDetails(experienceByCompany, profileName);
+
+    if (!details && jobBlocks[index]?.body) {
+      const alignedBlock = jobBlocks[index];
+
+      if (
+        !profileTitle ||
+        !alignedBlock.title ||
+        compareTextsExactly(alignedBlock.title, profileTitle)
+      ) {
+        details = alignedBlock.body;
+      }
+    }
+
+    if (!details && profileTitle) {
+      const titleMatchedBlock = jobBlocks.find((block) =>
+        compareTextsExactly(block.title || "", profileTitle)
+      );
+
+      if (titleMatchedBlock?.body) {
+        details = titleMatchedBlock.body;
+      }
+    }
+
+    return {
+      ...item,
+      details: details || "",
+    };
+  });
 
   if (
-    companyList.length === 1 &&
+    profileEntries.length === 1 &&
     parsed.experience &&
     !nextExperienceInputs[0]?.details
   ) {
-    const onlyCompanyName = getProfileCompanyName(companyList[0]);
-    const jobBlocks = splitExperienceIntoJobBlocks(parsed.experience);
+    const onlyCompanyName = getProfileCompanyName(profileEntries[0]);
+    const fallbackBlocks = splitExperienceIntoJobBlocks(parsed.experience);
 
     nextExperienceInputs[0] = {
       ...nextExperienceInputs[0],
       details:
         experienceByCompany[onlyCompanyName] ||
-        (jobBlocks[0]?.body
-          ? jobBlocks[0].body
+        (fallbackBlocks[0]?.body
+          ? fallbackBlocks[0].body
           : normalizeExperienceBodyToLines(parsed.experience)),
     };
   }
@@ -2114,6 +2205,7 @@ export const validateParsedResumeAgainstProfile = ({
       continue;
     }
 
+    // Intentionally compare titles only — never company name or timeline.
     if (!compareTextsExactly(profileEntry.title, pastedEntry.title)) {
       addMismatch(
         mismatches,

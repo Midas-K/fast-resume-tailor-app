@@ -924,6 +924,126 @@ Built GenAI systems.
     expect(validation.mismatches).toHaveLength(0);
   });
 
+  test("maps experience details by matching titles when company names differ", () => {
+    const profileCompanies = [
+      {
+        companyName: "Meta",
+        title: "Staff Machine Learning Engineer",
+      },
+      {
+        companyName: "Amazon",
+        title: "Senior Machine Learning Engineer",
+      },
+    ];
+
+    const parsed = parseResumeSections(
+      `
+PROFESSIONAL SUMMARY
+Staff AI engineer.
+
+SKILLS
+Python
+
+WORK EXPERIENCE
+**Blue Orange Digital** | Staff Machine Learning Engineer | Mar 2023 – Present
+
+Built agentic workflows.
+
+**Dataiku** | Senior Machine Learning Engineer | Jul 2021 – Feb 2023
+
+Engineered ML pipelines.
+`,
+      profileCompanies
+    );
+
+    const applied = applyParsedResumeToForm({
+      parsed,
+      profileCompanies,
+      currentExperienceInputs: profileCompanies.map((item, index) => ({
+        id: index,
+        companyName: item.companyName,
+        title: item.title,
+        timeline: "",
+        location: "",
+        details: "",
+      })),
+    });
+
+    expect(applied.experienceInputs[0].details).toContain("agentic workflows");
+    expect(applied.experienceInputs[1].details).toContain("ML pipelines");
+
+    const validation = validatePastedResumeAgainstProfile({
+      rawText: `
+PROFESSIONAL SUMMARY
+Staff AI engineer.
+
+SKILLS
+Python
+
+WORK EXPERIENCE
+**Blue Orange Digital** | Staff Machine Learning Engineer | Mar 2023 – Present
+
+Built agentic workflows.
+
+**Dataiku** | Senior Machine Learning Engineer | Jul 2021 – Feb 2023
+
+Engineered ML pipelines.
+`,
+      profile: {
+        experience: profileCompanies,
+        education: [],
+        resume_template_has_certifications: false,
+      },
+      templateHasCertifications: false,
+    });
+
+    expect(validation.isValid).toBe(true);
+  });
+
+  test("does not compare company name or timeline for experience safety check", () => {
+    const profile = {
+      experience: [
+        {
+          companyName: "Meta",
+          title: "Staff Machine Learning Engineer",
+          timeline: "Oct 2023 - Present",
+        },
+        {
+          companyName: "Amazon",
+          title: "Senior Machine Learning Engineer",
+          timeline: "Feb 2020 - Sep 2023",
+        },
+      ],
+      education: [],
+      resume_template_has_certifications: false,
+    };
+
+    const validation = validatePastedResumeAgainstProfile({
+      rawText: `
+PROFESSIONAL SUMMARY
+Staff AI engineer.
+
+SKILLS
+Python
+
+WORK EXPERIENCE
+**Blue Orange Digital** | Staff Machine Learning Engineer | Mar 2023 – Present
+
+Built agentic workflows.
+
+**Dataiku** | Senior Machine Learning Engineer | Jul 2021 – Feb 2023
+
+Engineered ML pipelines.
+`,
+      profile,
+      templateHasCertifications: false,
+    });
+
+    expect(validation.isValid).toBe(true);
+    expect(validation.mismatches.join(" ")).not.toMatch(/company/i);
+    expect(validation.mismatches.join(" ")).not.toMatch(/duration|timeline/i);
+  });
+
   test("validatePastedResumeAgainstProfile fails when titles differ", () => {
     const profile = {
       experience: [

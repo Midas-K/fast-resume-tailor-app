@@ -389,10 +389,11 @@ function ResumeBuilderForm({
           details, and certifications, paste plain sentences as you get them
           from AI — with or without blank lines between lines. Each non-empty
           line becomes one Word bullet in the saved PDF. Summary stays as
-          normal paragraphs. Only experience titles must match your profile.
-          Education in the paste is ignored — the PDF always uses education
-          from your profile. Certifications are required in the paste only when
-          your selected resume template includes a Certifications section.
+          normal paragraphs. Only experience titles must match your profile —
+          company name and timeline are not compared. Education in the paste is
+          ignored — the PDF always uses education from your profile.
+          Certifications are required in the paste only when your selected
+          resume template includes a Certifications section.
         </p>
       );
     }
