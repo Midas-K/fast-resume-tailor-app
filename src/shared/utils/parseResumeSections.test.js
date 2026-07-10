@@ -68,6 +68,12 @@ describe("parseResumeSections", () => {
     expect(detectSectionType("Professional Summary")).toBe("summary");
     expect(detectSectionType("PROFESSIONAL SUMMARY")).toBe("summary");
     expect(detectSectionType("**Technical Skills**")).toBe("skills");
+    expect(detectSectionType("Skill")).toBe("skills");
+    expect(detectSectionType("Skill Set")).toBe("skills");
+    expect(detectSectionType("Skillset")).toBe("skills");
+    expect(detectSectionType("Skills Set")).toBe("skills");
+    expect(detectSectionType("Technical Skill Set")).toBe("skills");
+    expect(detectSectionType("Key Skills")).toBe("skills");
     expect(detectSectionType("Work Experience")).toBe("experience");
     expect(detectSectionType("Professional Certifications")).toBe(
       "certifications"

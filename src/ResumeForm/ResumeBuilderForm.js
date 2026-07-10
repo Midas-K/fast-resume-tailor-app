@@ -464,7 +464,7 @@ function ResumeBuilderForm({
 
 Example headings (any order):
 PROFESSIONAL SUMMARY
-SKILLS
+SKILLS / SKILL SET
 WORK EXPERIENCE
 CERTIFICATIONS`}
         />
