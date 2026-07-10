@@ -1,7 +1,12 @@
 const pool = require("../../db");
 const { DOCX_MIME_TYPE } = require("./templateDocx");
+const {
+  ensureResumeTemplateHasCertificationsColumn,
+} = require("../../db/schema");
 
 async function listActiveTemplates() {
+  await ensureResumeTemplateHasCertificationsColumn();
+
   const result = await pool.query(
     `
         SELECT
@@ -82,6 +87,8 @@ async function uploadTemplate({
   uploadedByAdminId,
   hasCertifications = true,
 }) {
+  await ensureResumeTemplateHasCertificationsColumn();
+
   const client = await pool.connect();
 
   try {

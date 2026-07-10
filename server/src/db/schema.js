@@ -1,5 +1,42 @@
 const pool = require("./pool");
 
+let hasCertificationsColumnReady = false;
+
+const ensureResumeTemplateHasCertificationsColumn = async () => {
+  if (hasCertificationsColumnReady) {
+    return;
+  }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS resume_templates (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      file_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      file_data BYTEA NOT NULL,
+      is_active BOOLEAN DEFAULT true,
+      is_default BOOLEAN DEFAULT false,
+      has_certifications BOOLEAN DEFAULT true,
+      uploaded_by_admin_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await pool.query(`
+    ALTER TABLE resume_templates
+    ADD COLUMN IF NOT EXISTS has_certifications BOOLEAN DEFAULT true;
+  `);
+
+  await pool.query(`
+    UPDATE resume_templates
+    SET has_certifications = true
+    WHERE has_certifications IS NULL;
+  `);
+
+  hasCertificationsColumnReady = true;
+};
+
 const createTables = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -96,26 +133,7 @@ const createTables = async () => {
     END $$;
   `);
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS resume_templates (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT DEFAULT '',
-      file_name TEXT NOT NULL,
-      mime_type TEXT NOT NULL,
-      file_data BYTEA NOT NULL,
-      is_active BOOLEAN DEFAULT true,
-      is_default BOOLEAN DEFAULT false,
-      has_certifications BOOLEAN DEFAULT true,
-      uploaded_by_admin_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-
-  await pool.query(`
-    ALTER TABLE resume_templates
-    ADD COLUMN IF NOT EXISTS has_certifications BOOLEAN DEFAULT true;
-  `);
+  await ensureResumeTemplateHasCertificationsColumn();
 
   await pool.query(`
     ALTER TABLE profiles
@@ -157,4 +175,7 @@ const createTables = async () => {
   `);
 };
 
-module.exports = { createTables };
+module.exports = {
+  createTables,
+  ensureResumeTemplateHasCertificationsColumn,
+};

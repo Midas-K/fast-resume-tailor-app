@@ -110,9 +110,19 @@ export async function uploadResumeTemplate(formData) {
         ? [result.message]
         : ["Could not upload resume template."];
 
+    const cleanedLines = errorLines.map((line) => {
+      const text = String(line || "").trim();
+
+      if (/has_certifications/i.test(text)) {
+        return "The database is still updating. Wait a moment and try again. Templates without Certifications are allowed.";
+      }
+
+      return text;
+    });
+
     const details = [
       "Template upload failed:",
-      ...errorLines,
+      ...cleanedLines,
       ...(result.warnings || []).map((warning) => `Warning: ${warning}`),
     ]
       .filter(Boolean)

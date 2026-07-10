@@ -2,6 +2,9 @@ const pool = require("../../db");
 const { isOwnerEmail } = require("../../utils/email");
 const { HttpError } = require("../../utils/httpError");
 const { canAdminManageProfile } = require("./profileAccess");
+const {
+  ensureResumeTemplateHasCertificationsColumn,
+} = require("../../db/schema");
 
 const PROFILE_TEMPLATE_SELECT = `
   profiles.resume_template_id,
@@ -56,6 +59,8 @@ const saveProfileHistory = async ({
 };
 
 const listProfiles = async (req) => {
+  await ensureResumeTemplateHasCertificationsColumn();
+
   const result = await pool.query(
     `
       SELECT
@@ -82,6 +87,8 @@ const listProfiles = async (req) => {
 
 const getProfileById = async (req) => {
   const { id } = req.params;
+
+  await ensureResumeTemplateHasCertificationsColumn();
 
   const result = await pool.query(
     `
@@ -418,6 +425,8 @@ const listProfileHistory = async (req) => {
 };
 
 const listAllProfilesForAdmin = async (req) => {
+  await ensureResumeTemplateHasCertificationsColumn();
+
   let result;
 
   if (isOwnerEmail(req.user.email)) {

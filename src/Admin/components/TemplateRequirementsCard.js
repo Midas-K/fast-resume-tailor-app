@@ -28,7 +28,10 @@ function TemplateRequirementsCard() {
           <code>{"{{@EXPERIENCE}}"}</code>
           <code>{"{{@CERTIFICATIONS}}"}</code>
           <span>Use these for simple one-block sections.</span>
-          <span>{"{{@CERTIFICATIONS}}"} is optional — omit it to hide Certifications.</span>
+          <span>
+            {"{{@CERTIFICATIONS}}"} is optional. You can upload templates with
+            or without a Certifications section.
+          </span>
         </div>
 
         <div>

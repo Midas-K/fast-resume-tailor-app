@@ -12,22 +12,7 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-const server = app.listen(PORT, HOST, () => {
-  console.log(`FRT server listening on ${HOST}:${PORT}`);
-});
-
-const setupDatabase = async () => {
-  try {
-    await createTables();
-    console.log("Database schema ready.");
-  } catch (error) {
-    console.error("Database setup failed:", error);
-  }
-};
-
-setupDatabase();
-
-const shutdown = (signal) => {
+const shutdown = (signal, server) => {
   console.log(`Received ${signal}, shutting down gracefully.`);
 
   server.close(() => {
@@ -35,5 +20,20 @@ const shutdown = (signal) => {
   });
 };
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+const start = async () => {
+  try {
+    await createTables();
+    console.log("Database schema ready.");
+  } catch (error) {
+    console.error("Database setup failed:", error);
+  }
+
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`FRT server listening on ${HOST}:${PORT}`);
+  });
+
+  process.on("SIGTERM", () => shutdown("SIGTERM", server));
+  process.on("SIGINT", () => shutdown("SIGINT", server));
+};
+
+start();

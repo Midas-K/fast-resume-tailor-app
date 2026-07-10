@@ -35,6 +35,20 @@ const clearPreviewPdfCache = (templateId = null) => {
   previewPdfCache.delete(String(templateId));
 };
 
+const formatTemplateUploadError = (error) => {
+  const rawMessage = String(error?.message || "Unknown upload error.").trim();
+
+  if (/has_certifications/i.test(rawMessage)) {
+    return "Could not upload resume template. The database is still updating. Wait a moment and try again. Templates without {{@CERTIFICATIONS}} are allowed.";
+  }
+
+  if (/duplicate key|unique constraint/i.test(rawMessage)) {
+    return "Could not upload resume template. A template with this name or default setting already exists.";
+  }
+
+  return `Could not upload resume template. ${rawMessage}`;
+};
+
 const router = express.Router();
 
 const upload = multer({
@@ -255,9 +269,7 @@ router.post(
       }
 
       return res.status(500).json({
-        message: `Could not upload resume template. ${
-          error.message || "Unknown upload error."
-        }`,
+        message: formatTemplateUploadError(error),
       });
     }
   }

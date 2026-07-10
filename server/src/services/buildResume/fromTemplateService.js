@@ -23,6 +23,9 @@ const {
   removeCertificationsSectionFromDocumentXml,
 } = require("./removeCertificationsSection");
 const { runLibreOfficeConvert } = require("./libreOfficeConvert");
+const {
+  ensureResumeTemplateHasCertificationsColumn,
+} = require("../../db/schema");
 
 const DOCX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -462,6 +465,8 @@ const buildContact = ({ email, location, phone, links }) => {
 };
 
 const getAssignedOrDefaultTemplate = async (profileId) => {
+  await ensureResumeTemplateHasCertificationsColumn();
+
   const assignedTemplate = await pool.query(
     `
       SELECT
