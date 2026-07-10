@@ -4,7 +4,7 @@ import IconButton from "../UI/IconButton";
 import ProfileReferencePanel from "../Profile/components/ProfileReferencePanel";
 import { buildResumeFromTemplate } from "../shared/api/buildResumeApi";
 import { parseJsonField } from "../shared/utils/format";
-import { parseAndValidateResumePaste, hasPastedCertificationsSection } from "../shared/utils/parseResumeSections";
+import { parseAndValidateResumePaste, profileTemplateHasCertifications } from "../shared/utils/parseResumeSections";
 import { buildResumeSavedMessage } from "../shared/utils/applicationActionMessages";
 import { confirmReapplyIfNeeded } from "../shared/utils/confirmReapplyIfNeeded";
 import { useToast } from "../UI/ToastProvider";
@@ -187,6 +187,7 @@ function ResumeBuilderForm({
     const parsed = parseAndValidateResumePaste({
       rawText,
       profile,
+      templateHasCertifications: profileTemplateHasCertifications(profile),
     });
 
     parsedSnapshotRef.current = parsed;
@@ -278,6 +279,7 @@ function ResumeBuilderForm({
     const parsed = parseAndValidateResumePaste({
       rawText: wholeResumePaste,
       profile: selectedProfile,
+      templateHasCertifications: profileTemplateHasCertifications(selectedProfile),
     });
 
     parsedSnapshotRef.current = parsed;
@@ -348,19 +350,13 @@ function ResumeBuilderForm({
       return null;
     }
 
-    const parsedHasCertifications = hasPastedCertificationsSection({
-      foundSections: parsed.parseMeta?.foundSections || [],
-      certifications: parsed.certification,
-    });
-
-    if (parsedHasCertifications && !parsed.certification.trim()) {
-      alert("Certifications section was found but has no content.");
-      return null;
-    }
-
     if (!parsed.profileMatch.isValid) {
       alert(
-        `Profile safety check failed. Pasted experience must match your profile, and pasted education must match when an education section is included.\n\n${parsed.profileMatch.mismatches
+        `Profile safety check failed. Pasted experience titles must match your profile.${
+          profileTemplateHasCertifications(selectedProfile)
+            ? " Certifications are required because your resume template includes that section."
+            : ""
+        }\n\n${parsed.profileMatch.mismatches
           .map((item) => `- ${item}`)
           .join("\n")}`
       );
@@ -393,10 +389,10 @@ function ResumeBuilderForm({
           details, and certifications, paste plain sentences as you get them
           from AI — with or without blank lines between lines. Each non-empty
           line becomes one Word bullet in the saved PDF. Summary stays as
-          normal paragraphs. Experience company/title/duration must match your
-          profile. Education and certifications are optional in the paste — if
-          you include them, education must match your profile. The saved PDF
-          always uses education from your profile.
+          normal paragraphs. Only experience titles must match your profile.
+          Education in the paste is ignored — the PDF always uses education
+          from your profile. Certifications are required in the paste only when
+          your selected resume template includes a Certifications section.
         </p>
       );
     }

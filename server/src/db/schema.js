@@ -106,9 +106,15 @@ const createTables = async () => {
       file_data BYTEA NOT NULL,
       is_active BOOLEAN DEFAULT true,
       is_default BOOLEAN DEFAULT false,
+      has_certifications BOOLEAN DEFAULT true,
       uploaded_by_admin_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE resume_templates
+    ADD COLUMN IF NOT EXISTS has_certifications BOOLEAN DEFAULT true;
   `);
 
   await pool.query(`

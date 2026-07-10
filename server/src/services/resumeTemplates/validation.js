@@ -41,31 +41,32 @@ const getTemplateValidationReport = ({ templateText = "" }) => {
     "{{FULL_NAME}}",
     "{{@SUMMARY}}",
     "{{@SKILLS}}",
-    "{{@CERTIFICATIONS}}",
   ];
-  
-  requiredPlaceholders.forEach((placeholder) => {
-    if (!has(placeholder)) {
-      errors.push(`${placeholder} is missing.`);
-    }
-  });
-  
-  const hasContactBlock = has("{{CONTACT}}");
-  
-  const hasSeparateContactFields =
-    has("{{EMAIL}}") || has("{{PHONE}}") || has("{{LOCATION}}") || has("{{LINKS}}");
-  
-  if (!hasContactBlock && !hasSeparateContactFields) {
-    errors.push(
-      "Contact section is missing. Add {{CONTACT}} or use separate fields like {{EMAIL}}, {{PHONE}}, {{LOCATION}}, or {{LINKS}}."
-    );
-  }
 
   requiredPlaceholders.forEach((placeholder) => {
     if (!has(placeholder)) {
       errors.push(`${placeholder} is missing.`);
     }
   });
+
+  const hasCertifications = has("{{@CERTIFICATIONS}}");
+
+  if (!hasCertifications) {
+    warnings.push(
+      "{{@CERTIFICATIONS}} is optional. Templates without it will omit the Certifications section."
+    );
+  }
+
+  const hasContactBlock = has("{{CONTACT}}");
+
+  const hasSeparateContactFields =
+    has("{{EMAIL}}") || has("{{PHONE}}") || has("{{LOCATION}}") || has("{{LINKS}}");
+
+  if (!hasContactBlock && !hasSeparateContactFields) {
+    errors.push(
+      "Contact section is missing. Add {{CONTACT}} or use separate fields like {{EMAIL}}, {{PHONE}}, {{LOCATION}}, or {{LINKS}}."
+    );
+  }
 
   const hasSimpleEducation = has("{{@EDUCATION}}");
   const hasEducationLoopStart = has("{{#EDUCATION_ITEMS}}");
@@ -163,7 +164,12 @@ const getTemplateValidationReport = ({ templateText = "" }) => {
     isValid: errors.length === 0,
     errors: [...new Set(errors)],
     warnings: [...new Set(warnings)],
+    hasCertifications,
   };
+};
+
+const templateHasCertificationsPlaceholder = (templateText = "") => {
+  return normalizeTemplateText(templateText).includes("{{@CERTIFICATIONS}}");
 };
 
 const getDocxtemplaterErrorMessages = (error) => {
@@ -232,6 +238,7 @@ const validateTemplateBeforeUpload = async (templateBuffer) => {
       message: "Template is valid.",
       errors: [],
       warnings: validationReport.warnings,
+      hasCertifications: Boolean(validationReport.hasCertifications),
     };
   } catch (error) {
     console.error("Template validation error:", error);
@@ -273,4 +280,5 @@ module.exports = {
   getTemplateValidationReport,
   getDocxtemplaterErrorMessages,
   validateTemplateBeforeUpload,
+  templateHasCertificationsPlaceholder,
 };

@@ -469,7 +469,9 @@ const getAssignedOrDefaultTemplate = async (profileId) => {
         resume_templates.name,
         resume_templates.file_name,
         resume_templates.mime_type,
-        resume_templates.file_data
+        resume_templates.file_data,
+        resume_templates.has_certifications,
+        resume_templates.is_default
       FROM profiles
       JOIN resume_templates
         ON resume_templates.id = profiles.resume_template_id
@@ -500,6 +502,7 @@ const getAssignedOrDefaultTemplate = async (profileId) => {
         file_name,
         mime_type,
         file_data,
+        has_certifications,
         is_default
       FROM resume_templates
       WHERE is_active = true
@@ -968,6 +971,15 @@ async function buildResumeFromTemplate({ user, body }) {
     const finalCertifications = certification || certifications || "";
     const includeCertifications =
       splitBulletLines(finalCertifications).length > 0;
+    const templateRequiresCertifications =
+      template.has_certifications !== false;
+
+    if (templateRequiresCertifications && !includeCertifications) {
+      throw createServiceError(
+        "Certifications are required because the selected resume template includes a Certifications section.",
+        400
+      );
+    }
 
     const { templateStyles, bulletConfig } = getTemplatePrep(
       template.id,

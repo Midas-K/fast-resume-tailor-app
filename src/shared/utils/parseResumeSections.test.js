@@ -287,7 +287,7 @@ PMP
     expect(experienceByCompany.Acme.split("\n")).toHaveLength(2);
   });
 
-  test("validatePastedResumeAgainstProfile passes when experience and education match profile", () => {
+  test("validatePastedResumeAgainstProfile passes when experience titles match profile", () => {
     const profile = {
       experience: [
         {
@@ -313,11 +313,13 @@ PMP
           timeline: "Jan 2014 - Dec 2016",
         },
       ],
+      resume_template_has_certifications: false,
     };
 
     const validation = validatePastedResumeAgainstProfile({
       rawText: EXAMPLE_RESUME,
       profile,
+      templateHasCertifications: false,
     });
 
     expect(validation.isValid).toBe(true);
@@ -887,7 +889,7 @@ AWS Certified Machine Learning - Specialty
     ).toHaveLength(3);
   });
 
-  test("validatePastedResumeAgainstProfile fails when company or duration differs", () => {
+  test("validatePastedResumeAgainstProfile allows different company or duration when titles match", () => {
     const profile = {
       experience: [
         {
@@ -897,6 +899,7 @@ AWS Certified Machine Learning - Specialty
         },
       ],
       education: [],
+      resume_template_has_certifications: false,
     };
 
     const validation = validatePastedResumeAgainstProfile({
@@ -908,10 +911,40 @@ Confluent | Nov 2024 - Present
 Built GenAI systems.
 `,
       profile,
+      templateHasCertifications: false,
+    });
+
+    expect(validation.isValid).toBe(true);
+    expect(validation.mismatches).toHaveLength(0);
+  });
+
+  test("validatePastedResumeAgainstProfile fails when titles differ", () => {
+    const profile = {
+      experience: [
+        {
+          companyName: "Meta",
+          title: "Staff Software Engineer (AI/ML Systems)",
+          timeline: "Nov 2024 - Present",
+        },
+      ],
+      education: [],
+      resume_template_has_certifications: false,
+    };
+
+    const validation = validatePastedResumeAgainstProfile({
+      rawText: `
+WORK EXPERIENCE
+Senior Software Engineer
+Meta | Nov 2024 - Present
+
+Built GenAI systems.
+`,
+      profile,
+      templateHasCertifications: false,
     });
 
     expect(validation.isValid).toBe(false);
-    expect(validation.mismatches.join(" ")).toMatch(/company must match profile exactly/i);
+    expect(validation.mismatches.join(" ")).toMatch(/title must match profile exactly/i);
   });
 
   test("allows pasted resume without education when profile has education", () => {
@@ -930,6 +963,7 @@ Built GenAI systems.
           timeline: "Jan 2010 - Dec 2014",
         },
       ],
+      resume_template_has_certifications: false,
     };
 
     const validation = validatePastedResumeAgainstProfile({
@@ -946,13 +980,14 @@ Meta | Staff Engineer | Oct 2023 - Present
 Built systems.
 `,
       profile,
+      templateHasCertifications: false,
     });
 
     expect(validation.isValid).toBe(true);
     expect(validation.mismatches).toHaveLength(0);
   });
 
-  test("validates education only when education section is pasted", () => {
+  test("ignores education mismatches in pasted resume", () => {
     const profile = {
       experience: [
         {
@@ -968,6 +1003,7 @@ Built systems.
           timeline: "Jan 2010 - Dec 2014",
         },
       ],
+      resume_template_has_certifications: false,
     };
 
     const validation = validatePastedResumeAgainstProfile({
@@ -987,13 +1023,14 @@ Meta | Staff Engineer | Oct 2023 - Present
 Built systems.
 `,
       profile,
+      templateHasCertifications: false,
     });
 
-    expect(validation.isValid).toBe(false);
-    expect(validation.mismatches.join(" ")).toMatch(/school must match profile exactly/i);
+    expect(validation.isValid).toBe(true);
+    expect(validation.mismatches).toHaveLength(0);
   });
 
-  test("does not require certifications section in pasted resume", () => {
+  test("does not require certifications section when template has none", () => {
     const parsed = parseResumeSections(
       `
 PROFESSIONAL SUMMARY
@@ -1014,5 +1051,108 @@ Built systems.
     expect(parsed.warnings.join(" ")).not.toMatch(/certifications section/i);
     expect(hasPastedCertificationsSection(parsed)).toBe(false);
     expect(hasPastedEducationSection(parsed)).toBe(false);
+  });
+
+  test("requires certifications when template includes certifications section", () => {
+    const profile = {
+      experience: [
+        {
+          companyName: "Meta",
+          title: "Staff Engineer",
+          timeline: "Oct 2023 - Present",
+        },
+      ],
+      education: [],
+      resume_template_has_certifications: true,
+    };
+
+    const validation = validatePastedResumeAgainstProfile({
+      rawText: `
+PROFESSIONAL SUMMARY
+Staff AI engineer.
+
+SKILLS
+Python
+
+WORK EXPERIENCE
+Meta | Staff Engineer | Oct 2023 - Present
+
+Built systems.
+`,
+      profile,
+      templateHasCertifications: true,
+    });
+
+    expect(validation.isValid).toBe(false);
+    expect(validation.mismatches.join(" ")).toMatch(/certifications section is required/i);
+  });
+
+  test("allows missing certifications when template has no certifications section", () => {
+    const profile = {
+      experience: [
+        {
+          companyName: "Meta",
+          title: "Staff Engineer",
+          timeline: "Oct 2023 - Present",
+        },
+      ],
+      education: [],
+      resume_template_has_certifications: false,
+    };
+
+    const validation = validatePastedResumeAgainstProfile({
+      rawText: `
+PROFESSIONAL SUMMARY
+Staff AI engineer.
+
+SKILLS
+Python
+
+WORK EXPERIENCE
+Meta | Staff Engineer | Oct 2023 - Present
+
+Built systems.
+`,
+      profile,
+      templateHasCertifications: false,
+    });
+
+    expect(validation.isValid).toBe(true);
+  });
+
+  test("allows save when template and paste both include certifications", () => {
+    const profile = {
+      experience: [
+        {
+          companyName: "Meta",
+          title: "Staff Engineer",
+          timeline: "Oct 2023 - Present",
+        },
+      ],
+      education: [],
+      resume_template_has_certifications: true,
+    };
+
+    const validation = validatePastedResumeAgainstProfile({
+      rawText: `
+PROFESSIONAL SUMMARY
+Staff AI engineer.
+
+SKILLS
+Python
+
+WORK EXPERIENCE
+Meta | Staff Engineer | Oct 2023 - Present
+
+Built systems.
+
+CERTIFICATIONS
+AWS Certified Machine Learning - Specialty
+`,
+      profile,
+      templateHasCertifications: true,
+    });
+
+    expect(validation.isValid).toBe(true);
   });
 });

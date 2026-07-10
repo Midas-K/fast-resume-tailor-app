@@ -12,6 +12,7 @@ async function listActiveTemplates() {
           mime_type,
           is_active,
           is_default,
+          has_certifications,
           uploaded_by_admin_id,
           created_at
         FROM resume_templates
@@ -79,6 +80,7 @@ async function uploadTemplate({
   fileBuffer,
   isDefault,
   uploadedByAdminId,
+  hasCertifications = true,
 }) {
   const client = await pool.connect();
 
@@ -105,9 +107,10 @@ async function uploadTemplate({
               file_data,
               is_active,
               is_default,
+              has_certifications,
               uploaded_by_admin_id
             )
-            VALUES ($1, $2, $3, $4, $5, true, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8)
             RETURNING
               id,
               name,
@@ -116,6 +119,7 @@ async function uploadTemplate({
               mime_type,
               is_active,
               is_default,
+              has_certifications,
               uploaded_by_admin_id,
               created_at
           `,
@@ -126,6 +130,7 @@ async function uploadTemplate({
         DOCX_MIME_TYPE,
         fileBuffer,
         isDefault,
+        Boolean(hasCertifications),
         uploadedByAdminId,
       ]
     );

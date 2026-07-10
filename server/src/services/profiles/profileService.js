@@ -3,6 +3,32 @@ const { isOwnerEmail } = require("../../utils/email");
 const { HttpError } = require("../../utils/httpError");
 const { canAdminManageProfile } = require("./profileAccess");
 
+const PROFILE_TEMPLATE_SELECT = `
+  profiles.resume_template_id,
+  COALESCE(
+    assigned_templates.name,
+    default_templates.name
+  ) AS resume_template_name,
+  COALESCE(
+    assigned_templates.file_name,
+    default_templates.file_name
+  ) AS resume_template_file_name,
+  COALESCE(
+    assigned_templates.has_certifications,
+    default_templates.has_certifications,
+    true
+  ) AS resume_template_has_certifications
+`;
+
+const PROFILE_TEMPLATE_JOINS = `
+  LEFT JOIN resume_templates AS assigned_templates
+    ON assigned_templates.id = profiles.resume_template_id
+   AND assigned_templates.is_active = true
+  LEFT JOIN resume_templates AS default_templates
+    ON default_templates.is_default = true
+   AND default_templates.is_active = true
+`;
+
 const saveProfileHistory = async ({
   userId,
   profileId,
@@ -41,14 +67,10 @@ const listProfiles = async (req) => {
         profiles.education,
         profiles.experience,
         profiles.admin_prompt,
-        profiles.resume_template_id,
-        resume_templates.name AS resume_template_name,
-        resume_templates.file_name AS resume_template_file_name,
+        ${PROFILE_TEMPLATE_SELECT},
         profiles.created_at
       FROM profiles
-      LEFT JOIN resume_templates
-        ON resume_templates.id = profiles.resume_template_id
-       AND resume_templates.is_active = true
+      ${PROFILE_TEMPLATE_JOINS}
       WHERE profiles.user_id = $1
       ORDER BY profiles.created_at DESC
     `,
@@ -72,14 +94,10 @@ const getProfileById = async (req) => {
         profiles.education,
         profiles.experience,
         profiles.admin_prompt,
-        profiles.resume_template_id,
-        resume_templates.name AS resume_template_name,
-        resume_templates.file_name AS resume_template_file_name,
+        ${PROFILE_TEMPLATE_SELECT},
         profiles.created_at
       FROM profiles
-      LEFT JOIN resume_templates
-        ON resume_templates.id = profiles.resume_template_id
-       AND resume_templates.is_active = true
+      ${PROFILE_TEMPLATE_JOINS}
       WHERE profiles.id = $1 AND profiles.user_id = $2
     `,
     [id, req.user.id]
@@ -417,15 +435,11 @@ const listAllProfilesForAdmin = async (req) => {
           profiles.education,
           profiles.experience,
           profiles.admin_prompt,
-          profiles.resume_template_id,
-          resume_templates.name AS resume_template_name,
-          resume_templates.file_name AS resume_template_file_name,
+          ${PROFILE_TEMPLATE_SELECT},
           profiles.created_at
         FROM profiles
         JOIN users ON users.id = profiles.user_id
-        LEFT JOIN resume_templates
-          ON resume_templates.id = profiles.resume_template_id
-         AND resume_templates.is_active = true
+        ${PROFILE_TEMPLATE_JOINS}
         ORDER BY profiles.created_at ASC
       `
     );
@@ -444,15 +458,11 @@ const listAllProfilesForAdmin = async (req) => {
           profiles.education,
           profiles.experience,
           profiles.admin_prompt,
-          profiles.resume_template_id,
-          resume_templates.name AS resume_template_name,
-          resume_templates.file_name AS resume_template_file_name,
+          ${PROFILE_TEMPLATE_SELECT},
           profiles.created_at
         FROM profiles
         JOIN users ON users.id = profiles.user_id
-        LEFT JOIN resume_templates
-          ON resume_templates.id = profiles.resume_template_id
-         AND resume_templates.is_active = true
+        ${PROFILE_TEMPLATE_JOINS}
         WHERE users.account_type = 'user'
         AND users.approved_by_admin_id = $1
         ORDER BY profiles.created_at ASC

@@ -235,6 +235,7 @@ router.post(
         fileBuffer: req.file.buffer,
         isDefault: finalIsDefault,
         uploadedByAdminId: req.user.id,
+        hasCertifications: Boolean(validationResult.hasCertifications),
       });
 
       clearPreviewPdfCache();

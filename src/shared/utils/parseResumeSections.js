@@ -2023,19 +2023,35 @@ export const hasPastedCertificationsSection = (parsed = {}) =>
   (parsed?.foundSections || []).includes("certifications") ||
   Boolean(String(parsed?.certifications || "").trim());
 
+export const profileTemplateHasCertifications = (profile = null) => {
+  if (!profile) {
+    return true;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      profile,
+      "resume_template_has_certifications"
+    )
+  ) {
+    return Boolean(profile.resume_template_has_certifications);
+  }
+
+  return true;
+};
+
 export const validateParsedResumeAgainstProfile = ({
   parsed = null,
   profile = null,
   profileExperience = [],
   profileEducation = [],
+  templateHasCertifications = profileTemplateHasCertifications(profile),
 } = {}) => {
   const mismatches = [];
   const pastedJobBlocks = alignJobBlocksToProfile(
     splitExperienceIntoJobBlocks(parsed?.experience || "", profileExperience),
     profileExperience
   );
-  const pastedEducation = parsed?.educationEntries || [];
-  const shouldValidateEducation = hasPastedEducationSection(parsed);
 
   if (profileExperience.length === 0) {
     addMismatch(
@@ -2064,7 +2080,7 @@ export const validateParsedResumeAgainstProfile = ({
     if (!profileEntry && pastedEntry) {
       addMismatch(
         mismatches,
-        `${label}: pasted resume has an extra role at "${pastedEntry.company}".`
+        `${label}: pasted resume has an extra role titled "${pastedEntry.title || "Unknown"}".`
       );
       continue;
     }
@@ -2072,7 +2088,7 @@ export const validateParsedResumeAgainstProfile = ({
     if (profileEntry && !pastedEntry) {
       addMismatch(
         mismatches,
-        `${label}: missing pasted role for profile company "${profileEntry.companyName}".`
+        `${label}: missing pasted role for profile title "${profileEntry.title}".`
       );
       continue;
     }
@@ -2081,83 +2097,25 @@ export const validateParsedResumeAgainstProfile = ({
       continue;
     }
 
-    if (!compareTextsExactly(profileEntry.companyName, pastedEntry.company)) {
-      addMismatch(
-        mismatches,
-        `${label} company must match profile exactly ("${profileEntry.companyName}" vs "${pastedEntry.company}").`
-      );
-    }
-
     if (!compareTextsExactly(profileEntry.title, pastedEntry.title)) {
       addMismatch(
         mismatches,
         `${label} title must match profile exactly ("${profileEntry.title}" vs "${pastedEntry.title}").`
       );
     }
-
-    if (!compareTimelinesExactly(profileEntry.timeline, pastedEntry.timeline)) {
-      addMismatch(
-        mismatches,
-        `${label} duration must match profile exactly ("${profileEntry.timeline}" vs "${pastedEntry.timeline}").`
-      );
-    }
   }
 
-  if (shouldValidateEducation) {
-    if (profileEducation.length !== pastedEducation.length) {
+  if (templateHasCertifications) {
+    if (!hasPastedCertificationsSection(parsed)) {
       addMismatch(
         mismatches,
-        `Education count must match profile exactly (${profileEducation.length} in profile, ${pastedEducation.length} in pasted resume).`
+        "Certifications section is required because the selected resume template includes Certifications."
       );
-    }
-
-    const educationCount = Math.max(profileEducation.length, pastedEducation.length);
-
-    for (let index = 0; index < educationCount; index += 1) {
-      const profileEntry = profileEducation[index];
-      const pastedEntry = pastedEducation[index];
-      const label = `Education ${index + 1}`;
-
-      if (!profileEntry && pastedEntry) {
-        addMismatch(
-          mismatches,
-          `${label}: pasted resume has extra education for "${pastedEntry.school}".`
-        );
-        continue;
-      }
-
-      if (profileEntry && !pastedEntry) {
-        addMismatch(
-          mismatches,
-          `${label}: missing pasted education for profile school "${profileEntry.school}".`
-        );
-        continue;
-      }
-
-      if (!profileEntry || !pastedEntry) {
-        continue;
-      }
-
-      if (!compareTextsExactly(profileEntry.school, pastedEntry.school)) {
-        addMismatch(
-          mismatches,
-          `${label} school must match profile exactly ("${profileEntry.school}" vs "${pastedEntry.school}").`
-        );
-      }
-
-      if (!compareDegreesExactly(profileEntry.degree, pastedEntry.degree)) {
-        addMismatch(
-          mismatches,
-          `${label} degree must match profile exactly ("${profileEntry.degree}" vs "${pastedEntry.degree}").`
-        );
-      }
-
-      if (!compareTimelinesExactly(profileEntry.timeline, pastedEntry.timeline)) {
-        addMismatch(
-          mismatches,
-          `${label} duration must match profile exactly ("${profileEntry.timeline}" vs "${pastedEntry.timeline}").`
-        );
-      }
+    } else if (!String(parsed?.certifications || "").trim()) {
+      addMismatch(
+        mismatches,
+        "Certifications section was found but has no content."
+      );
     }
   }
 
@@ -2165,13 +2123,15 @@ export const validateParsedResumeAgainstProfile = ({
     isValid: mismatches.length === 0,
     mismatches,
     pastedJobBlocks,
-    pastedEducation,
+    pastedEducation: parsed?.educationEntries || [],
+    templateHasCertifications: Boolean(templateHasCertifications),
   };
 };
 
 export const validatePastedResumeAgainstProfile = ({
   rawText = "",
   profile = null,
+  templateHasCertifications = profileTemplateHasCertifications(profile),
 } = {}) => {
   if (!profile) {
     return {
@@ -2200,10 +2160,15 @@ export const validatePastedResumeAgainstProfile = ({
     profile,
     profileExperience,
     profileEducation,
+    templateHasCertifications,
   });
 };
 
-export const parseAndValidateResumePaste = ({ rawText = "", profile = null } = {}) => {
+export const parseAndValidateResumePaste = ({
+  rawText = "",
+  profile = null,
+  templateHasCertifications = profileTemplateHasCertifications(profile),
+} = {}) => {
   if (!profile) {
     return {
       summary: "",
@@ -2248,6 +2213,7 @@ export const parseAndValidateResumePaste = ({ rawText = "", profile = null } = {
         profile,
         profileExperience,
         profileEducation,
+        templateHasCertifications,
       })
     : {
         isValid: false,
